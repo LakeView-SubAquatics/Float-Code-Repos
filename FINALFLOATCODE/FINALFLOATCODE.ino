@@ -155,7 +155,9 @@ void loop() {
 
   /// pressure calc
   // makes sure that the pressure pin is set to A1
+  // constantly gauges the pressure in the water as voltage from the A1 port.
   int pressure_pin = analogRead(A1);
+  // converts the voltage into a PSI reading. PSI is later used to gauge depth.
   float psi = (0.0374 * pressure_pin) - 3.3308;
 
   // switch loop function, refer to function for more info
