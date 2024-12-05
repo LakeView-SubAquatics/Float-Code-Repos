@@ -1,23 +1,29 @@
 /* 
-  Author(s): Tyerone Chen
+  Author(s): Tyerone Chen, Danny Henningfield, Adam Palma, 
     Innit Create: 6/30/2024
       Last update: 12/5/2024
 */
 
-// ** REMINDER ** //
-// Remove a bunch of the serial prints or whatever so we can burn the code onto the arduino.
+// ** NEEDED CHANGES REMINDER ** //
+// Remove a bunch of the serial prints or whatever so we can burn the code onto the arduino. - DONE
+// Set any use of the pinmodesin the code as referances as to help with readability of the code.
+// Remake the code within the MAIN LOOP Program to be in functions which'll be called in
+// Remake the motor process code to bealigned with the new competition requirements.
+  // Try to setup enum data types and terenary operator for simpler and much more enhanced code?
+  // Make sure to include "digitalWrite(LED_BUILTIN, LOW);" in any code which changes motor movement
+    // THis is to ensure that the switches have a resistor for the voltage that is passed through
+// Add some necessary checks and failsafes for the radio transmission code.
+// Genrally clean up whatever miss haps and naming issues there are in the code.
+// Remove or comment out any methods refering to psi change.
+// Change the recieved data info into a status codes
 
 // Arduino Float Code Remake
-// Credits for Danny henningfield for the innit steps/state change which stopped my from
-// having a god damn aneurism lmao
-/// Side Note, we need to comment the crap out of this becuase i had an 
-/// aneurism reading the old code （´∇｀''）
 
-// Library included
+// Included Library
 #include <SPI.h>
-#include <RH_RF95.h>
-#include <ezButton.h>
-#include <List.hpp>
+#include <RH_RF95.h> // Used for the radio and specific adafruit board used
+#include <ezButton.h> // Used for the much better button/switch detection
+#include <List.hpp> // Used for the simpler functionality to make lists, instead of having to manually redefine arrays.
 
 
 
@@ -56,19 +62,16 @@ char received_data[RH_RF95_MAX_MESSAGE_LEN];
 /// unsigned is essentially a value type with only stores in positive integers for memory saving, which works here cuz we only count up
 
 unsigned long radio_task_millis = 0;
-const long radio_task_interval = 1001;
-
 unsigned long psi_task_half_millis = 0;
-const long psi_task_half_interval = 1001;
-
 unsigned long psi_task_full_millis = 0;
-const long psi_task_full_interval = 1250;
-
 unsigned long psi_change_check_millis = 0;
-const long psi_change_check_interval = 500;
-
 unsigned long list_updater_millis = 0;
-const long list_updater_interval = 5000;
+
+const long RADIO_TASK_INTERVAL = 1001;
+const long PSI_TASK_HALF_INTERVAL = 1001;
+const long PSI_TASK_FULL_INTERVAL = 1250;
+const long PSI_CHANGE_CHECK_INTERVAL = 500;
+const long LIST_UPDATE_INTERVAL = 5000;
 
 // psi calc vars setup
 float psi_half_sec = 0;
@@ -207,6 +210,13 @@ void loop() {
     Personal Note (Tyerone): Currently this it the simplest and most streamline method for the movement
     I would probably do a switch case statement, but that can only take bools of one checker, not multiple
     like we would need here
+    */
+
+    /*
+      New Motor Process should be the same as before, where we lower down to a depth, and then rise back up and then repeat.
+      However there will be a change on the flooring process
+      Instead of being at the bottom of the pool. We'll need to be at a depth of 2.5m, for at LEAST 45sec.
+      THis shouldn't be too muich of a change.
     */
     
     /// Float Starts off as Surfaced - Reads that Top Switch has yet to be Hit -
