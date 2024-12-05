@@ -1,4 +1,4 @@
-/*
+/* 
   Author(s): Tyerone Chen
     Innit Create: 6/30/2024
       Last update: 9/26/2024
@@ -10,7 +10,7 @@
 // Arduino Float Code Remake
 // Credits for Danny henningfield for the innit steps/state change which stopped my from
 // having a god damn aneurism lmao
-/// Side Note, we need to comment the crap out of this becuase i had an
+/// Side Note, we need to comment the crap out of this becuase i had an 
 /// aneurism reading the old code （´∇｀''）
 
 // Library included
@@ -30,8 +30,8 @@
 #endif
 
 // button defin
-ezButton top_Switch(12); // Top Siwtch Connected to pin 12
-ezButton bottom_Switch(A3); // Bottom switch connected to pin A3
+ezButton topSwitch(12); // Top Siwtch Connected to pin 12
+ezButton bottomSwitch(A3); // Bottom switch connected to pin A3
 
 #define RF95_FREQ 915.0
 
@@ -92,7 +92,7 @@ bool bottom_switch_pressed = false;
 // Float surface to ground check - Type: Bool
 /// will be set as true at the beggining of code, as the
 /// float should always start surfaced
-bool float_surfaced = true;
+bool float_surfaced = true; 
 bool float_floored = false;
 
 
@@ -100,25 +100,26 @@ void setup() {
   pinMode(RFM95_RST, OUTPUT);
   digitalWrite(RFM95_RST, HIGH);
 
-  top_Switch.setDebounceTime(0);  // Reduce debounce time
-  bottom_Switch.setDebounceTime(0);  // Reduce debounce time
+  topSwitch.setDebounceTime(0);  // Reduce debounce time
+  bottomSwitch.setDebounceTime(0);  // Reduce debounce time
 
   // Innitiates how each pin on the board should work
   pinMode(voltA, OUTPUT);
   pinMode(voltB, OUTPUT);
-  pinMode(diag_port_A, OUTPUT);
-  pinMode(diag_port_B, OUTPUT);
+  pinMode(diag_port_A, INPUT_PULLUP);
+  pinMode(diag_port_B, INPUT_PULLUP);
   pinMode(pwm_port, OUTPUT);
   pinMode(LED_BUILTIN, OUTPUT);
-  // Both diagPort should be at high, idk though
+  // Enables the Diag Ports
   digitalWrite(diag_port_A, HIGH);
   digitalWrite(diag_port_B, HIGH);
 
-  Serial.begin(115200);
-  while (!Serial) delay(1);
-  delay(1);
+  // Resistor setting for the Limit Swtches
+  pinmode(12, INPUT_PULLUP);
+  pinmode(A#, INPUT_PULLUP);
+  digitalWrite(LED_BUILTIN, LOW);
 
-  Serial.println("Feather LoRa TX Test!");
+  // Serial.println("Feather LoRa TX Test!");
 
   digitalWrite(RFM95_RST, LOW);
   delay(10);
@@ -126,17 +127,17 @@ void setup() {
   delay(10);
 
   while (!rf95.init()) {
-    Serial.println("LoRa radio init failed");
-    Serial.println("Uncomment '#define SERIAL_DEBUG' in RH_RF95.cpp for detailed debug info");
+    //Serial.println("LoRa radio init failed");
+    //Serial.println("Uncomment '#define SERIAL_DEBUG' in RH_RF95.cpp for detailed debug info");
     while (1);
   }
-  Serial.println("LoRa radio init OK!");
+  //Serial.println("LoRa radio init OK!");
 
   if (!rf95.setFrequency(RF95_FREQ)) {
-    Serial.println("setFrequency failed");
+    //Serial.println("setFrequency failed");
     while (1);
   }
-  Serial.print("Set Freq to: "); Serial.println(RF95_FREQ);
+  //Serial.print("Set Freq to: "); Serial.println(RF95_FREQ);
 
   rf95.setTxPower(23, false);
 
@@ -146,7 +147,7 @@ void setup() {
 }
 
 // this is important, why i dont remeber honestly
-// nevermin i remeber its mainly just to innit and define it
+// nevermin i remeber its mainly just to innit and define it 
 int16_t packetnum = 0;
 
 void loop() {
@@ -155,9 +156,7 @@ void loop() {
 
   /// pressure calc
   // makes sure that the pressure pin is set to A1
-  // constantly gauges the pressure in the water as voltage from the A1 port.
   int pressure_pin = analogRead(A1);
-  // converts the voltage into a PSI reading. PSI is later used to gauge depth.
   float psi = (0.0374 * pressure_pin) - 3.3308;
 
   // switch loop function, refer to function for more info
@@ -175,19 +174,19 @@ void loop() {
       uint8_t len = sizeof(buf);
 
       if (rf95.recv(buf, &len)) {
-        Serial.print("Got reply: ");
+        /*Serial.print("Got reply: ");
         Serial.println((char*)buf); // This is the reply
         Serial.print("RSSI: ");
         Serial.println(rf95.lastRssi(), DEC);
-
+*/
         // Store the received data in the global variable
         strncpy(received_data, (char*)buf, len);
-        Serial.println(received_data);
-      }
+        //Serial.println(received_data);
+      } 
       else {
-        Serial.println("Receive failed");
+        //Serial.println("Receive failed");
       }
-    }
+    } 
     else {
       // Serial.println("No reply, is there a listener around?");
     }
@@ -198,9 +197,9 @@ void loop() {
   if (strcmp(received_data, "initiate") == 0){
     ////// Motor Movement Determiner Section
     ///// Reminder Top Switch is 12, and Bottom Switch is A3
-    ///// Motor Direction Reminder -
+    ///// Motor Direction Reminder - 
     // voltA - High, voltB - Low ; Clockwise? the direction where it sucks water  
-    // voltA - Low, voltB - High ; Counter Clockwise? the direction where it pushes water out
+    // voltA - Low, voltB - High ; Counter Clockwise? the direction where it pushes water out 
     /// NOTE, When either digital reads as "1", that means that the switch has yet to be hit
 
     /*
@@ -208,38 +207,42 @@ void loop() {
     I would probably do a switch case statement, but that can only take bools of one checker, not multiple
     like we would need here
     */
-   
+    
     /// Float Starts off as Surfaced - Reads that Top Switch has yet to be Hit -
     /// Reads that Bottom Switch has yet to be Hit - Begins to Start Moving Motor to Suck in Water
-    if (float_surfaced == true && float_floored == false && digitalRead(12) == 1 && digitalRead(A3) == 1)  {
-      digitalWrite(voltA, HIGH);                    
+    if (float_surfaced == true && float_floored == false && digitalRead(12) == 1 && digitalRead(A3) == 1)  { 
+      digitalWrite(voltA, HIGH);                     
       digitalWrite(voltB, LOW);
+      digitalWrite(LED_BUILTIN, LOW);
     }
 
-    /// Float is in the water - Still detects as surfaced, for now -
+    /// Float is in the water - Still detects as surfaced, for now - 
     /// Top Switch has NOT been Hit - Bottom Switch has been Hit -
     /// Continues to suck in water - Sets float_surfaced to false -
     /// Reasoning: as to directly move to the next if checker
-    else if (float_surfaced == true && float_floored == false && digitalRead(12) == 0 && digitalRead(A3) == 1) {
+    else if (float_surfaced == true && float_floored == false && digitalRead(12) == 0 && digitalRead(A3) == 1) { 
       float_surfaced = false;
       digitalWrite(voltA, HIGH);
       digitalWrite(voltB, LOW);
+      digitalWrite(LED_BUILTIN, LOW);
     }
 
     /// Float is in the water - Float is neither Surfaced nor Floored
     /// Top Switch has NOT been Hit - Bottom Switch has been Hit -
     /// Float Motor is turned off to sink down
-    else if (float_surfaced == false && float_floored == false && digitalRead(12) == 0 && digitalRead(A3) == 1) {
+    else if (float_surfaced == false && float_floored == false && digitalRead(12) == 0 && digitalRead(A3) == 1) { 
       digitalWrite(voltA, LOW);                            
       digitalWrite(voltB, LOW);
+      digitalWrite(LED_BUILTIN, LOW);
     }
 
     /// Float is in the water - Float is or has been Currently Floored
     /// Top Switch has NOT been Hit - Bottom Switch has been Hit
     /// Float Motor is turned on to push out water, i.e counter clockwise direction
-    else if (float_surfaced == false && float_floored == true && digitalRead(12) == 0 && digitalRead(A3) == 1) {
-      digitalWrite(voltA, LOW);                          
+    else if (float_surfaced == false && float_floored == true && digitalRead(12) == 0 && digitalRead(A3) == 1) { 
+      digitalWrite(voltA, LOW);                           
       digitalWrite(voltB, HIGH);
+      digitalWrite(LED_BUILTIN, LOW);
     }
 
     /// Float is in the water - Float is or has been Currently Floored
@@ -249,6 +252,7 @@ void loop() {
     else if (float_surfaced == false && float_floored == true && digitalRead(12) == 1 && digitalRead(A3) == 1) {
       digitalWrite(voltA, LOW);                                                  
       digitalWrite(voltB, HIGH);
+      digitalWrite(LED_BUILTIN, LOW);
     }
 
     /// Float is in the water - Float is or has been Currently Floored
@@ -259,14 +263,25 @@ void loop() {
       float_floored = false;
       digitalWrite(voltA, LOW);                                                    
       digitalWrite(voltB, LOW);
+      digitalWrite(LED_BUILTIN, LOW);
     }
 
     /// Floats been surfaced and is not floored, obviously lol
     /// Top switch has been NOT Hit - Bottom Switch has been Hit
     /// Float Motor should now be sucking in water, essentailly restarting back to the top of the list of the float movement
     else if (float_surfaced == true && float_floored == false && digitalRead(12) == 0 && digitalRead(A3) == 1) {
-      digitalWrite(voltA, HIGH);                    
+      digitalWrite(voltA, HIGH);                     
       digitalWrite(voltB, LOW);
+      digitalWrite(LED_BUILTIN, LOW);
+    }
+
+    else if(//Put code which determines if the float is at a depth of 2.5m){
+      digitalWrite(voltA, LOW);                                                    
+      digitalWrite(voltB, LOW);
+      digitalWrite(LED_BUILTIN, LOW);
+      if(//put timer code which will triger motor functions after 45s){
+
+      }
     }
     //// End of Motor Movement Determiner Section
 
@@ -274,7 +289,7 @@ void loop() {
     //// Multi-threading part ٩( ᐖ )۶
 
 
-    /// Psi List appender, for data collection when under water
+    /// Psi List Data Appender, for data collection when under water
     if (current_millis - list_updater_millis >= list_updater_interval){
       list_updater_millis = current_millis;
       psiList.add(psi);
@@ -287,13 +302,13 @@ void loop() {
       psi_half_sec = psi;
     }
 
-   
+    
     /// Full Second psi getter, will also use to compare later
     if (current_millis - psi_task_full_millis >= psi_task_full_interval){
       psi_task_full_millis = current_millis;
       psi_full_sec = psi;
     }
-   
+    
 
     /// Detrminer to decide whether or not the float is floored or surfaced
     /// Based on if there is a significant change in pressure
@@ -350,5 +365,3 @@ void topSwitchDetect(){
     top_switch_pressed = false;
   }
 }
-
-
