@@ -156,21 +156,16 @@ int16_t packetnum = 0;
 // unsigned is essentially a value type with only stores in positive integers for memory saving, which works here cuz we only count up
 
 unsigned long radio_task_millis = 0;
-const long RADIO_TASK_INTERVAL = 1001;
-
 unsigned long psi_task_half_millis = 0;
-const long PSI_TASK_HALF_INTERVAL = 1001;
-
 unsigned long psi_task_full_millis = 0;
-const long PSI_TASK_FULL_INTERVAL = 1250;
-
 unsigned long psi_change_check_millis = 0;
-const long PSI_CHANGE_CHECK_INTERVAL = 500;
-
 unsigned long list_updater_millis = 0;
+
+const long RADIO_TASK_INTERVAL = 1001;
+const long PSI_TASK_HALF_INTERVAL = 1001;
+const long PSI_TASK_FULL_INTERVAL = 1250;
+const long PSI_CHANGE_CHECK_INTERVAL = 500;
 const long LIST_UPDATER_INTERVAL = 5000;
-
-
 
 
 void loop() {
