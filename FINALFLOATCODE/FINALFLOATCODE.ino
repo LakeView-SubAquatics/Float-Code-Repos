@@ -104,6 +104,7 @@ void setup() {
   bottomSwitch.setDebounceTime(0);  // Reduce debounce time
 
   // Innitiates how each pin on the board should work
+  // Try to set as addresses and pointers for the pins, to make it clearer what they do and which pins they are
   pinMode(voltA, OUTPUT);
   pinMode(voltB, OUTPUT);
   pinMode(diag_port_A, INPUT_PULLUP);
