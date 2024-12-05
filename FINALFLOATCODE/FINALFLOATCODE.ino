@@ -1,5 +1,5 @@
 /* 
-  Author(s): Tyerone Chen
+  Author(s): Tyerone Chen, Adam Palma
     Innit Create: 6/30/2024
       Last update: 12/5/2024
 */
@@ -9,9 +9,10 @@
 
 // Arduino Float Code Remake
 // Credits for Danny henningfield for the innit steps/state change which stopped my from
-// having a god damn aneurism lmao
-/// Side Note, we need to comment the crap out of this becuase i had an 
-/// aneurism reading the old code （´∇｀''）
+// having a god d--n aneurism lmao
+// Side Note, we need to comment the crap out of this becuase i had an 
+// aneurism reading the old code （´∇｀''）
+// Adam note: me too, i am now brain damaged .-.
 
 // Library included
 #include <SPI.h>
@@ -29,9 +30,9 @@
 #define RFM95_RST   4
 #endif
 
-// button defin
-ezButton topSwitch(12); // Top Siwtch Connected to pin 12
-ezButton bottomSwitch(A3); // Bottom switch connected to pin A3
+// button defines
+ezButton topSwitch(12);   // Top Siwtch Connected to pin 12
+ezButton bottomSwitch(A3);// Bottom switch connected to pin A3
 
 #define RF95_FREQ 915.0
 
@@ -43,32 +44,12 @@ List<float> depthList;
 List<int> timeList;
 
 // Data recived innit
-/// essentialy this is where the cariable of the recieved data, from the pi, will be held
-/// should always be a string, which is formated as a list of chars
+// essentialy this is where the cariable of the recieved data, from the pi, will be held
+// should always be a string, which is formated as a list of chars
 char received_data[RH_RF95_MAX_MESSAGE_LEN];
 
 
-// multithreading / timer code setup
-/// reminder* are all in terms of millis, so 1000 millis = 1 sec
-// Type - unsigned long, const long
-// All "const long" are basically the interval
-/// for any newbies, const means it will never change, and long is simmilar to the double time, except it doesnt do decimal
-/// unsigned is essentially a value type with only stores in positive integers for memory saving, which works here cuz we only count up
 
-unsigned long radio_task_millis = 0;
-const long radio_task_interval = 1001;
-
-unsigned long psi_task_half_millis = 0;
-const long psi_task_half_interval = 1001;
-
-unsigned long psi_task_full_millis = 0;
-const long psi_task_full_interval = 1250;
-
-unsigned long psi_change_check_millis = 0;
-const long psi_change_check_interval = 500;
-
-unsigned long list_updater_millis = 0;
-const long list_updater_interval = 5000;
 
 // psi calc vars setup
 float psi_half_sec = 0;
@@ -90,8 +71,8 @@ bool top_switch_pressed = false;
 bool bottom_switch_pressed = false;
 
 // Float surface to ground check - Type: Bool
-/// will be set as true at the beggining of code, as the
-/// float should always start surfaced
+// will be set as true at the beggining of code, as the
+// float should always start surfaced
 bool float_surfaced = true; 
 bool float_floored = false;
 
@@ -100,10 +81,10 @@ void setup() {
   pinMode(RFM95_RST, OUTPUT);
   digitalWrite(RFM95_RST, HIGH);
 
-  topSwitch.setDebounceTime(0);  // Reduce debounce time
-  bottomSwitch.setDebounceTime(0);  // Reduce debounce time
+  topSwitch.setDebounceTime(0);    // Reduce debounce time
+  bottomSwitch.setDebounceTime(0); // Reduce debounce time
 
-  // Innitiates how each pin on the board should work
+  // Initiates how each pin on the board should work
   pinMode(voltA, OUTPUT);
   pinMode(voltB, OUTPUT);
   pinMode(diag_port_A, INPUT_PULLUP);
@@ -129,16 +110,17 @@ void setup() {
   while (!rf95.init()) {
     //Serial.println("LoRa radio init failed");
     //Serial.println("Uncomment '#define SERIAL_DEBUG' in RH_RF95.cpp for detailed debug info");
-    while (1);
+
   }
-  //Serial.println("LoRa radio init OK!");
+  // Serial.println("LoRa radio init OK!");
 
   if (!rf95.setFrequency(RF95_FREQ)) {
     //Serial.println("setFrequency failed");
-    while (1);
+    while (1);  //lock up code, this would suck 
   }
   //Serial.print("Set Freq to: "); Serial.println(RF95_FREQ);
 
+  // set transfer power to 0
   rf95.setTxPower(23, false);
 
   // Attach interrupt handler for top switch
@@ -146,11 +128,34 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(A3), bottomSwitchDetect, CHANGE);
 }
 
-// this is important, why i dont remeber honestly
-// nevermin i remeber its mainly just to innit and define it 
+//to init and define it 
 int16_t packetnum = 0;
 
+// multithreading / timer code setup
+// reminder* are all in terms of millis, so 1000 millis = 1 sec
+// Type - unsigned long, const long
+// All "const long" are basically the interval
+// for any newbies, const means it will never change, and long is simmilar to the double time, except it doesnt do decimal
+// unsigned is essentially a value type with only stores in positive integers for memory saving, which works here cuz we only count up
+
+unsigned long radio_task_millis = 0;
+const long RADIO_TASK_INTERVAL = 1001;
+
+unsigned long psi_task_half_millis = 0;
+const long PSI_TASK_HALF_INTERVAL = 1001;
+
+unsigned long psi_task_full_millis = 0;
+const long PSI_TASK_FULL_INTERVAL = 1250;
+
+unsigned long psi_change_check_millis = 0;
+const long PSI_CHANGE_CHECK_INTERVAL = 500;
+
+unsigned long list_updater_millis = 0;
+const long LIST_UPDATER_INTERVAL = 5000;
+
+
 void loop() {
+  
   // Millis Timer Start
   unsigned long current_millis = millis();
 
@@ -166,7 +171,7 @@ void loop() {
   duty_cycle = 255;
 
   // Radio Communication Checker
-  if (current_millis - radio_task_millis >= radio_task_interval){
+  if (current_millis - radio_task_millis >= RADIO_TASK_INTERVAL){
     radio_task_millis = current_millis;
 
     if (rf95.waitAvailableTimeout(1000)) {
@@ -174,11 +179,13 @@ void loop() {
       uint8_t len = sizeof(buf);
 
       if (rf95.recv(buf, &len)) {
-        /*Serial.print("Got reply: ");
+        /*
+        Serial.print("Got reply: ");
         Serial.println((char*)buf); // This is the reply
         Serial.print("RSSI: ");
         Serial.println(rf95.lastRssi(), DEC);
-*/
+        */
+        
         // Store the received data in the global variable
         strncpy(received_data, (char*)buf, len);
         //Serial.println(received_data);
@@ -290,21 +297,21 @@ void loop() {
 
 
     /// Psi List Data Appender, for data collection when under water
-    if (current_millis - list_updater_millis >= list_updater_interval){
+    if (current_millis - list_updater_millis >= LIST_UPDATER_INTERVAL){
       list_updater_millis = current_millis;
       psiList.add(psi);
     }
 
 
     /// Half Second psi getter, for getting psi to compare later
-    if (current_millis - psi_task_half_millis >= psi_task_half_interval){
+    if (current_millis - psi_task_half_millis >= PSI_TASK_HALF_INTERVAL){
       psi_task_full_millis = current_millis;
       psi_half_sec = psi;
     }
 
     
     /// Full Second psi getter, will also use to compare later
-    if (current_millis - psi_task_full_millis >= psi_task_full_interval){
+    if (current_millis - psi_task_full_millis >= PSI_TASK_FULL_INTERVAL){
       psi_task_full_millis = current_millis;
       psi_full_sec = psi;
     }
@@ -312,7 +319,7 @@ void loop() {
 
     /// Detrminer to decide whether or not the float is floored or surfaced
     /// Based on if there is a significant change in pressure
-    if (current_millis - psi_change_check_millis >= psi_change_check_interval){
+    if (current_millis - psi_change_check_millis >= PSI_CHANGE_CHECK_INTERVAL){
       psi_change_check_millis = current_millis;
       psi_calc = psi_full_sec - psi_half_sec;
 
