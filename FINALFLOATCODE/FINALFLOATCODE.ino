@@ -22,7 +22,7 @@
 
 
 
-// Innit deffinition and crap
+// Init definition and crap
 //Radio crap
 #if defined(ADAFRUIT_FEATHER_M0) || defined(ADAFRUIT_FEATHER_M0_EXPRESS) || defined(ARDUINO_SAMD_FEATHER_M0)
 #define RFM95_CS    8
@@ -49,8 +49,6 @@ List<int> timeList;
 char received_data[RH_RF95_MAX_MESSAGE_LEN];
 
 
-
-
 // psi calc vars setup
 float psi_half_sec = 0;
 float psi_full_sec = 0;
@@ -64,7 +62,6 @@ int voltB = 11;
 int diag_port_B = 10;
 
 int pwm_port = 9;
-int duty_cycle = 0;
 
 // Switch Check - Type: Bool
 bool top_switch_pressed = false;
@@ -76,8 +73,12 @@ bool bottom_switch_pressed = false;
 bool float_surfaced = true; 
 bool float_floored = false;
 
+const DUTY_CYCLE = 255;
 
 void setup() {
+  // Motor power and port setup
+  analogWrite(pwm_port, DUTY_CYCLE);
+
   pinMode(RFM95_RST, OUTPUT);
   digitalWrite(RFM95_RST, HIGH);
 
@@ -91,6 +92,7 @@ void setup() {
   pinMode(diag_port_B, INPUT_PULLUP);
   pinMode(pwm_port, OUTPUT);
   pinMode(LED_BUILTIN, OUTPUT);
+
   // Enables the Diag Ports
   digitalWrite(diag_port_A, HIGH);
   digitalWrite(diag_port_B, HIGH);
@@ -100,25 +102,23 @@ void setup() {
   pinmode(A#, INPUT_PULLUP);
   digitalWrite(LED_BUILTIN, LOW);
 
-  // Serial.println("Feather LoRa TX Test!");
-
+  // Feather LoRa TX Test!
   digitalWrite(RFM95_RST, LOW);
   delay(10);
   digitalWrite(RFM95_RST, HIGH);
   delay(10);
 
   while (!rf95.init()) {
-    //Serial.println("LoRa radio init failed");
-    //Serial.println("Uncomment '#define SERIAL_DEBUG' in RH_RF95.cpp for detailed debug info");
-
+    // LoRa radio init failed
+    // Uncomment '#define SERIAL_DEBUG' in RH_RF95.cpp for detailed debug info
   }
-  // Serial.println("LoRa radio init OK!");
+  // LoRa radio init OK!
 
   if (!rf95.setFrequency(RF95_FREQ)) {
-    //Serial.println("setFrequency failed");
-    while (1);  //lock up code, this would suck 
+    //setFrequency failed!
+    while (1);  // lock up code, this would suck 
   }
-  //Serial.print("Set Freq to: "); Serial.println(RF95_FREQ);
+  //Set Freq to: RF95_FREQ
 
   // set transfer power to 0
   rf95.setTxPower(23, false);
@@ -154,6 +154,8 @@ unsigned long list_updater_millis = 0;
 const long LIST_UPDATER_INTERVAL = 5000;
 
 
+
+
 void loop() {
   
   // Millis Timer Start
@@ -164,12 +166,8 @@ void loop() {
   int pressure_pin = analogRead(A1);
   float psi = (0.0374 * pressure_pin) - 3.3308;
 
-  // switch loop function, refer to function for more info
-
-  // Motor power and port setup
-  analogWrite(pwm_port, duty_cycle);
-  duty_cycle = 255;
-
+  // switch loop function, refer to function for more info 
+#pragma region Radio_Communications 
   // Radio Communication Checker
   if (current_millis - radio_task_millis >= RADIO_TASK_INTERVAL){
     radio_task_millis = current_millis;
@@ -179,40 +177,41 @@ void loop() {
       uint8_t len = sizeof(buf);
 
       if (rf95.recv(buf, &len)) {
-        /*
-        Serial.print("Got reply: ");
-        Serial.println((char*)buf); // This is the reply
-        Serial.print("RSSI: ");
-        Serial.println(rf95.lastRssi(), DEC);
-        */
+        
         
         // Store the received data in the global variable
         strncpy(received_data, (char*)buf, len);
-        //Serial.println(received_data);
+        
       } 
       else {
-        //Serial.println("Receive failed");
+        //Receive failed
       }
     } 
     else {
-      // Serial.println("No reply, is there a listener around?");
+      // No reply, is there a listener around?
     }
   }
   // End of Radio Communication Checker
+#pragma endregion
 
-  ////// Code which actualy starts/functions after passing the radio communcation check
-  if (strcmp(received_data, "initiate") == 0){
-    ////// Motor Movement Determiner Section
-    ///// Reminder Top Switch is 12, and Bottom Switch is A3
-    ///// Motor Direction Reminder - 
+
+  // Code which actualy starts/functions after passing the radio communcation check
+  if (strcmp(received_data, "initiate") == 0) {
+    // Motor Movement Determiner Section
+    // Reminder Top Switch is 12, and Bottom Switch is A3
+    
+    // Motor Direction Reminder - 
+    
     // voltA - High, voltB - Low ; Clockwise? the direction where it sucks water  
-    // voltA - Low, voltB - High ; Counter Clockwise? the direction where it pushes water out 
+    // voltA - Low, voltB - High ; Counter Clockwise? the direction where it pushes water out
+
+
     /// NOTE, When either digital reads as "1", that means that the switch has yet to be hit
 
     /*
-    Personal Note (Tyerone): Currently this it the simplest and most streamline method for the movement
-    I would probably do a switch case statement, but that can only take bools of one checker, not multiple
-    like we would need here
+      Personal Note (Tyerone): Currently this it the simplest and most streamline method for the movement
+      I would probably do a switch case statement, but that can only take bools of one checker, not multiple
+      like we would need here
     */
     
     /// Float Starts off as Surfaced - Reads that Top Switch has yet to be Hit -
@@ -282,7 +281,8 @@ void loop() {
       digitalWrite(LED_BUILTIN, LOW);
     }
 
-    else if(//Put code which determines if the float is at a depth of 2.5m){
+    /*
+    else if (//Put code which determines if the float is at a depth of 2.5m){
       digitalWrite(voltA, LOW);                                                    
       digitalWrite(voltB, LOW);
       digitalWrite(LED_BUILTIN, LOW);
@@ -290,12 +290,13 @@ void loop() {
 
       }
     }
+    */
+
     //// End of Motor Movement Determiner Section
 
 
     //// Multi-threading part ٩( ᐖ )۶
-
-
+#pragma region Multi_Threaded
     /// Psi List Data Appender, for data collection when under water
     if (current_millis - list_updater_millis >= LIST_UPDATER_INTERVAL){
       list_updater_millis = current_millis;
@@ -348,6 +349,7 @@ void loop() {
       }
     }
   }
+#pragma endregion
   ////// End if section where the code works when the succesfully recieves a correct signal
 }
 
