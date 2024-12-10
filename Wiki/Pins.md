@@ -5,8 +5,8 @@
 | Pin Name | Definition |
 | -------- | ---------- |
 | VIN | Voltage Input - Able to take in a voltage between 5.5V - 24V|
-| IN A | Clockwise input - Inputted from the Brain Controller|
-| IN B | Counter clockwise input - Inputted from the Brain Controller|
+| IN A | Clockwise input - Inputted from the Brain Controller. For Example the Arduino Controller will divert power into IN A|
+| IN B | Counter clockwise input - Inputted from the Brain Controller. For Example the Arduino Controller will divert power into IN B|
 | VOUT | |
 | OUT A | Outputed Voltage |
 | OUT B | Outputed Voltage | 
