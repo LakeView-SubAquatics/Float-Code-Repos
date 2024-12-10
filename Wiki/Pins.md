@@ -5,7 +5,7 @@
 | Pin Name | Definition |
 | -------- | ---------- |
 | VIN | Voltage Input - Able to take in a voltage between 5.5V - 24V|
-| IN A | Inputed Voltage - |
+| IN A | Counter clockwise input |
 | IN B | Inputed Voltage - |
 | VOUT | |
 | OUT A | Outputed Voltage |
