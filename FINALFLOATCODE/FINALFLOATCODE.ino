@@ -62,14 +62,24 @@ List<int> timeList;
 // should always be a string, which is formated as a list of chars
 char received_data[RH_RF95_MAX_MESSAGE_LEN];
 
+// Enum for Float States
+  // SURFACED - 
+  // SUBMURSED - 
+  // MOVING - 
+  // FLOORED - 
+enum State {
+  SURFACED,
+  SUBMURSED,
+  MOVING,
+  FLOORED
+}
 
-
-// psi calc vars setup
+// PSI Calculation Variables
 float psi_half_sec = 0;
 float psi_full_sec = 0;
 float psi_calc = 0;
 
-// port setup - Type: int
+// Arduino & Motor Port Connection Variables
 int voltA = 5;
 int diag_port_A = 6;
 
@@ -78,17 +88,16 @@ int diag_port_B = 10;
 
 int pwm_port = 9;
 
-// Switch Check - Type: Bool
-bool top_switch_pressed = false;
-bool bottom_switch_pressed = false;
-
-// Float surface to ground check - Type: Bool
-// will be set as true at the beggining of code, as the
-// float should always start surfaced
-bool float_surfaced = true; 
-bool float_floored = false;
-
 const DUTY_CYCLE = 255;
+
+// Switch Check - Type: Bool
+enum Switch_State{
+  ACTIVE,
+  INACTIVE
+}
+
+enum Switch_States top_switch = INACTIVE;
+enum Switch_States bottom_switch = INACTIVE;
 
 void setup() {
   // Motor power and port setup
@@ -373,7 +382,26 @@ void loop() {
 }
 
 
-// Functionssssss (｡·  v  ·｡)
+// Functions (｡·  v  ·｡)
+
+enum State psiCompare(int half_time_psi, int full_time_psi){
+  
+}
+
+void recordData(int psi_data){
+  unsigned long list_updater_millis = 0;
+  const long LIST_UPDATER_INTERVAL = 5000;
+
+  if (current_millis - list_updater_millis >= LIST_UPDATER_INTERVAL){
+      list_updater_millis = current_millis;
+      psiList.add(psi_data);
+    }
+}
+
+void motorDirection(enum State float_state, ){
+
+}
+
 
 void bottomSwitchDetect(){
   if (digitalRead(A3) == 0){
