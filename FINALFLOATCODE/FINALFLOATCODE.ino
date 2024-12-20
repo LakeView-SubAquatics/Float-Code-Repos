@@ -1,9 +1,8 @@
 /* 
-
   Author(s): Tyerone Chen, Danny Henningfield, Adam Palma, 
 
     Innit Create: 6/30/2024
-      Last update: 12/5/2024
+      Last update: 12/19/2024
 */
 
 // ** NEEDED CHANGES REMINDER ** //
@@ -21,8 +20,6 @@
 
 // Arduino Float Code Remake
 
-// Credits for Danny henningfield for the innit steps/state change which stopped my from
-// having a god d--n aneurism lmao
 // Side Note, we need to comment the crap out of this becuase i had an 
 // aneurism reading the old code （´∇｀''）
 // Adam note: me too, i am now brain damaged .-.
@@ -44,13 +41,11 @@
 #define RFM95_RST   4
 #endif
 
-// button defines
-ezButton topSwitch(12);   // Top Siwtch Connected to pin 12
-ezButton bottomSwitch(A3);// Bottom switch connected to pin A3
-
 #define RF95_FREQ 915.0
 
 RH_RF95 rf95(RFM95_CS, RFM95_INT);
+
+#pragma region Variable_Definement
 
 // list defin area - Type: float, int
 List<float> psiList;
@@ -62,83 +57,103 @@ List<int> timeList;
 // should always be a string, which is formated as a list of chars
 char received_data[RH_RF95_MAX_MESSAGE_LEN];
 
-// Enum for Float States
-  // SURFACED - 
-  // SUBMURSED - 
-  // MOVING - 
-  // FLOORED - 
-enum State {
-  SURFACED,
-  SUBMURSED,
-  MOVING,
-  FLOORED
-}
-
 // PSI Calculation Variables
 float psi_half_sec = 0;
 float psi_full_sec = 0;
 float psi_calc = 0;
 
 // Arduino & Motor Port Connection Variables
-int voltA = 5;
+int outA = 5;
 int diag_port_A = 6;
 
-int voltB = 11;
+int outB = 11;
 int diag_port_B = 10;
 
 int pwm_port = 9;
 
 const DUTY_CYCLE = 255;
 
-// Switch Check - Type: Bool
+ezButton switch_top(12);   // Top Siwtch Connected to pin 12
+ezButton switch_bottom(A3);// Bottom switch connected to pin A3
+
+// Enum for Float States
+  // SURFACED - 
+  // SUBMURSED - 
+  // MOVING - 
+  // FLOORED - 
+enum Float_State {
+  SURFACED,
+  SUBMURSED,
+  MOVING,
+  FLOORED
+}
+
+// When the Code is Innitiated, the Float should be surfaced
+volatile Float_State float_curr_state = SURFACED;
+
+// Enum for Switch States
+  //  ACTIVE - 
+  // INACTIVE -
 enum Switch_State{
   ACTIVE,
   INACTIVE
 }
 
-enum Switch_States top_switch = INACTIVE;
-enum Switch_States bottom_switch = INACTIVE;
+// Neither Switch Should be Activated when the code starts
+volatile Switch_State switch_top_state = INACTIVE;
+volatile Switch_State switch_bottom_state = INACTIVE;
 
+// Enum for Motor Direction
+  // CLOCKWISE - 
+  // COUNTERCLOCKWISE - 
+  // STALLED - 
+enum Motor_Direction {
+  CLOCKWISE,
+  COUNTERCLOCKWISE,
+  STALLED
+}
+
+#pragma endregion
+
+
+#pragma region Setup
 void setup() {
-  // Motor power and port setup
   analogWrite(pwm_port, DUTY_CYCLE);
-
   pinMode(RFM95_RST, OUTPUT);
   digitalWrite(RFM95_RST, HIGH);
 
-  topSwitch.setDebounceTime(0);    // Reduce debounce time
-  bottomSwitch.setDebounceTime(0); // Reduce debounce time
-
+  // Removes the Delay which the component would detect the Switch Having activity.
+  switch_top.setDebounceTime(0);   
+  switch_bottom.setDebounceTime(0); 
 
   // Initiates how each pin on the board should work
+
   // Try to set as addresses and pointers for the pins, to make it clearer what they do and which pins they are
-  pinMode(voltA, OUTPUT);
-  pinMode(voltB, OUTPUT);
+  #pragma region Pin_Definition
+  pinMode(outA, OUTPUT);
+  pinMode(outB, OUTPUT);
   pinMode(diag_port_A, INPUT_PULLUP);
   pinMode(diag_port_B, INPUT_PULLUP);
   pinMode(pwm_port, OUTPUT);
   pinMode(LED_BUILTIN, OUTPUT);
-
   // Enables the Diag Ports
   digitalWrite(diag_port_A, HIGH);
   digitalWrite(diag_port_B, HIGH);
 
   // Resistor setting for the Limit Swtches
   pinmode(12, INPUT_PULLUP);
-  pinmode(A#, INPUT_PULLUP);
+  pinmode(A1, INPUT_PULLUP);
   digitalWrite(LED_BUILTIN, LOW);
+  #pragma endregion
 
   // Feather LoRa TX Test!
   digitalWrite(RFM95_RST, LOW);
-  delay(10);
   digitalWrite(RFM95_RST, HIGH);
-  delay(10);
 
   while (!rf95.init()) {
     // LoRa radio init failed
     // Uncomment '#define SERIAL_DEBUG' in RH_RF95.cpp for detailed debug info
   }
-  // LoRa radio init OK!
 
   if (!rf95.setFrequency(RF95_FREQ)) {
     //setFrequency failed!
@@ -148,11 +163,12 @@ void setup() {
 
   // set transfer power to 0
   rf95.setTxPower(23, false);
-
   // Attach interrupt handler for top switch
-  attachInterrupt(digitalPinToInterrupt(12), topSwitchDetect, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(A3), bottomSwitchDetect, CHANGE);
+  // May Remove?
+  attachInterrupt(digitalPinToInterrupt(12), switchTopDetect, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(A3), switchBottomDetect, CHANGE);
 }
+#pragma endregion
 
 //to init and define it 
 int16_t packetnum = 0;
@@ -177,6 +193,7 @@ const long PSI_CHANGE_CHECK_INTERVAL = 500;
 const long LIST_UPDATER_INTERVAL = 5000;
 
 
+#pragma region Main_Program/Loop
 void loop() {
   
   // Millis Timer Start
@@ -188,7 +205,9 @@ void loop() {
   float psi = (0.0374 * pressure_pin) - 3.3308;
 
   // switch loop function, refer to function for more info 
+
 #pragma region Radio_Communications 
+  
   // Radio Communication Checker
   if (current_millis - radio_task_millis >= RADIO_TASK_INTERVAL){
     radio_task_millis = current_millis;
@@ -213,6 +232,7 @@ void loop() {
     }
   }
   // End of Radio Communication Checker
+
 #pragma endregion
 
 
@@ -223,8 +243,8 @@ void loop() {
     
     // Motor Direction Reminder - 
     
-    // voltA - High, voltB - Low ; Clockwise? the direction where it sucks water  
-    // voltA - Low, voltB - High ; Counter Clockwise? the direction where it pushes water out
+    // outA - High, outB - Low ; Clockwise? the direction where it sucks water  
+    // outA - Low, outB - High ; Counter Clockwise? the direction where it pushes water out
 
 
     /// NOTE, When either digital reads as "1", that means that the switch has yet to be hit
@@ -245,8 +265,8 @@ void loop() {
     /// Float Starts off as Surfaced - Reads that Top Switch has yet to be Hit -
     /// Reads that Bottom Switch has yet to be Hit - Begins to Start Moving Motor to Suck in Water
     if (float_surfaced == true && float_floored == false && digitalRead(12) == 1 && digitalRead(A3) == 1)  { 
-      digitalWrite(voltA, HIGH);                     
-      digitalWrite(voltB, LOW);
+      digitalWrite(outA, HIGH);                     
+      digitalWrite(outB, LOW);
       digitalWrite(LED_BUILTIN, LOW);
     }
 
@@ -256,8 +276,8 @@ void loop() {
     /// Reasoning: as to directly move to the next if checker
     else if (float_surfaced == true && float_floored == false && digitalRead(12) == 0 && digitalRead(A3) == 1) { 
       float_surfaced = false;
-      digitalWrite(voltA, HIGH);
-      digitalWrite(voltB, LOW);
+      digitalWrite(outA, HIGH);
+      digitalWrite(outB, LOW);
       digitalWrite(LED_BUILTIN, LOW);
     }
 
@@ -265,8 +285,8 @@ void loop() {
     /// Top Switch has NOT been Hit - Bottom Switch has been Hit -
     /// Float Motor is turned off to sink down
     else if (float_surfaced == false && float_floored == false && digitalRead(12) == 0 && digitalRead(A3) == 1) { 
-      digitalWrite(voltA, LOW);                            
-      digitalWrite(voltB, LOW);
+      digitalWrite(outA, LOW);                            
+      digitalWrite(outB, LOW);
       digitalWrite(LED_BUILTIN, LOW);
     }
 
@@ -274,8 +294,8 @@ void loop() {
     /// Top Switch has NOT been Hit - Bottom Switch has been Hit
     /// Float Motor is turned on to push out water, i.e counter clockwise direction
     else if (float_surfaced == false && float_floored == true && digitalRead(12) == 0 && digitalRead(A3) == 1) { 
-      digitalWrite(voltA, LOW);                           
-      digitalWrite(voltB, HIGH);
+      digitalWrite(outA, LOW);                           
+      digitalWrite(outB, HIGH);
       digitalWrite(LED_BUILTIN, LOW);
     }
 
@@ -284,8 +304,8 @@ void loop() {
     /// Float Motor is turned on to push out water, i.e counter clockwise direction
     //// Note this is essentially just a failsaf, ensuring that it pushes out all of the water
     else if (float_surfaced == false && float_floored == true && digitalRead(12) == 1 && digitalRead(A3) == 1) {
-      digitalWrite(voltA, LOW);                                                  
-      digitalWrite(voltB, HIGH);
+      digitalWrite(outA, LOW);                                                  
+      digitalWrite(outB, HIGH);
       digitalWrite(LED_BUILTIN, LOW);
     }
 
@@ -295,8 +315,8 @@ void loop() {
     /// float_floored is set back to false so that the code can rerun again
     else if (float_surfaced == false && float_floored == true && digitalRead(12) == 1 && digitalRead(A3) == 0) {
       float_floored = false;
-      digitalWrite(voltA, LOW);                                                    
-      digitalWrite(voltB, LOW);
+      digitalWrite(outA, LOW);                                                    
+      digitalWrite(outB, LOW);
       digitalWrite(LED_BUILTIN, LOW);
     }
 
@@ -304,15 +324,15 @@ void loop() {
     /// Top switch has been NOT Hit - Bottom Switch has been Hit
     /// Float Motor should now be sucking in water, essentailly restarting back to the top of the list of the float movement
     else if (float_surfaced == true && float_floored == false && digitalRead(12) == 0 && digitalRead(A3) == 1) {
-      digitalWrite(voltA, HIGH);                     
-      digitalWrite(voltB, LOW);
+      digitalWrite(outA, HIGH);                     
+      digitalWrite(outB, LOW);
       digitalWrite(LED_BUILTIN, LOW);
     }
 
     /*
     else if (//Put code which determines if the float is at a depth of 2.5m){
-      digitalWrite(voltA, LOW);                                                    
-      digitalWrite(voltB, LOW);
+      digitalWrite(outA, LOW);                                                    
+      digitalWrite(outB, LOW);
       digitalWrite(LED_BUILTIN, LOW);
       if(//put timer code which will triger motor functions after 45s){
 
@@ -324,22 +344,18 @@ void loop() {
 
 
     //// Multi-threading part ٩( ᐖ )۶
-#pragma region Multi_Threaded
-    /// Psi List Data Appender, for data collection when under water
+#pragma region PSI Data Code
     if (current_millis - list_updater_millis >= LIST_UPDATER_INTERVAL){
       list_updater_millis = current_millis;
       psiList.add(psi);
     }
 
-
-    /// Half Second psi getter, for getting psi to compare later
+    /// Half Sec PSI
     if (current_millis - psi_task_half_millis >= PSI_TASK_HALF_INTERVAL){
       psi_task_full_millis = current_millis;
       psi_half_sec = psi;
     }
-
-    
-    /// Full Second psi getter, will also use to compare later
+    /// Full Sec PSI
     if (current_millis - psi_task_full_millis >= PSI_TASK_FULL_INTERVAL){
       psi_task_full_millis = current_millis;
       psi_full_sec = psi;
@@ -348,76 +364,58 @@ void loop() {
 
     /// Detrminer to decide whether or not the float is floored or surfaced
     /// Based on if there is a significant change in pressure
-    if (current_millis - psi_change_check_millis >= PSI_CHANGE_CHECK_INTERVAL){
+    if (current_millis - psi_change_check_millis >= PSI_CHANGE_CHECK_INTERVAL)
       psi_change_check_millis = current_millis;
-      psi_calc = psi_full_sec - psi_half_sec;
 
-      // Essentially, it determines the absolute value of the psi_calc, makes it so its a positive int,
-      // So that if the calc differeance <= 1, then it must to motionless so either floored or surfaced
-      if (abs(psi_calc) <= 1 && float_floored == false){
-        if (top_switch_pressed == true){
-          float_floored = true;
-          float_surfaced = false;
-        }
-        else if(bottom_switch_pressed == false){
-          float_floored = false;
-          float_surfaced = true;
-        }
-      }
-
-      if (abs(psi_calc) <= 1 && float_surfaced == false){
-        if (top_switch_pressed == true){
-          float_floored = true;
-          float_surfaced = false;
-        }
-        else if(bottom_switch_pressed == true){
-          float_floored = false;
-          float_surfaced = true;
-        }
-      }
+      float_curr_state = psiCompare(psi_half_sec, psi_full_sec, switch_bottom_state, switch_top_state);
     }
   }
 #pragma endregion
-  ////// End if section where the code works when the succesfully recieves a correct signal
+
 }
+#pragma endregion
 
 
-// Functions (｡·  v  ·｡)
+// Functions (｡· v ·｡)
+#pragma region Functions
 
-enum State psiCompare(int half_time_psi, int full_time_psi){
-  
-}
+// Calculates the change in PSI. If it is < 1, then it detects there is MINIMAL change in PSI, meaning that the Float is in one of 3 states
+  // SURFACED - If the Bottom Switch is PRESSED & the TOP Switch is NOT PRESSED, then it must be SURFACED
+  // FLOORED - If the Bottom Switch is NOT PRESSED & the TOP Switch is PRESSED, then it must be FLOORED
+  // SUBMURSED - If the Bottom Switch is NOT PRESSED & the NOT TOP Switch is PRESSED, then it must be SUBMURSED
+enum Float_State psiCompare(int half_time_psi, int full_time_psi, enum Switch_State switch_bottom_state, enum Switch_State switch_top_state){
+  int calc_psi_diff = abs(full_time_psi - half_time_psi);
 
-void recordData(int psi_data){
-  unsigned long list_updater_millis = 0;
-  const long LIST_UPDATER_INTERVAL = 5000;
-
-  if (current_millis - list_updater_millis >= LIST_UPDATER_INTERVAL){
-      list_updater_millis = current_millis;
-      psiList.add(psi_data);
+  if (calc_psi_diff <= 1){
+    if(switch_bottom_state == ACTIVE && switch_top_state == INACTIVE){
+      return SURFACED;
+    } else if(switch_bottom_state == INACTIVE && switch_top_state == ACTIVE){
+      return FLOORED;
+    } else if(switch_bottom_state == INACTIVE && switch_top == INACTIVE){
+      return SUBMURSED;
     }
-}
-
-void motorDirection(enum State float_state, ){
-
-}
-
-
-void bottomSwitchDetect(){
-  if (digitalRead(A3) == 0){
-    bottom_switch_pressed = true;
-  }
-  else{
-    bottom_switch_pressed = false;
   }
 }
 
+// Main Bulk of the Code
+void motorDirection(enum State float_state, enum Switch_State switch_bottom_state, enum Switch_State switch_top_state){
 
-void topSwitchDetect(){
+}
+
+void switchBottomDetect(){
+  if (digitalRead(A3) == HIGH){
+    switch_bottom_state = ACTIVE
+  } else{
+    bottom_switch_pressed = INACTIVE;
+  }
+}
+
+void switchTopDetect(){
   if (digitalRead(12) == HIGH){
-    top_switch_pressed = true;
-  }
-  else{
-    top_switch_pressed = false;
+    top_switch_pressed = ACTIVE;
+  } else{
+    top_switch_pressed = INACTIVE;
   }
 }
+
+#pragma endregion
