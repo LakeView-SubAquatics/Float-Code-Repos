@@ -2,7 +2,7 @@
   Author(s): Tyerone Chen, Danny Henningfield, Adam Palma, 
 
     Innit Create: 6/30/2024
-      Last update: 12/19/2024
+      Last update: 12/29/2024
 */
 
 // ** NEEDED CHANGES REMINDER ** //
@@ -240,95 +240,13 @@ void loop() {
   if (strcmp(received_data, "initiate") == 0) {
     // Motor Movement Determiner Section
     // Reminder Top Switch is 12, and Bottom Switch is A3
-    
-    // Motor Direction Reminder - 
-    
-    // outA - High, outB - Low ; Clockwise? the direction where it sucks water  
-    // outA - Low, outB - High ; Counter Clockwise? the direction where it pushes water out
+    // Motor Direction Reminder -
+      // outA - High, outB - Low ; Clockwise? the direction where it sucks water  
+      // outA - Low, outB - High ; Counter Clockwise? the direction where it pushes water out
+      /// NOTE, When either digital reads as "1", that means that the switch has yet to be hit
 
-
-    /// NOTE, When either digital reads as "1", that means that the switch has yet to be hit
-
-    /*
-      Personal Note (Tyerone): Currently this it the simplest and most streamline method for the movement
-      I would probably do a switch case statement, but that can only take bools of one checker, not multiple
-      like we would need here
-    */
-
-    /*
-      New Motor Process should be the same as before, where we lower down to a depth, and then rise back up and then repeat.
-      However there will be a change on the flooring process
-      Instead of being at the bottom of the pool. We'll need to be at a depth of 2.5m, for at LEAST 45sec.
-      THis shouldn't be too muich of a change.
-    */
-    
-    /// Float Starts off as Surfaced - Reads that Top Switch has yet to be Hit -
-    /// Reads that Bottom Switch has yet to be Hit - Begins to Start Moving Motor to Suck in Water
-    if (float_surfaced == true && float_floored == false && digitalRead(12) == 1 && digitalRead(A3) == 1)  { 
-      digitalWrite(outA, HIGH);                     
-      digitalWrite(outB, LOW);
-      digitalWrite(LED_BUILTIN, LOW);
-    }
-
-    /// Float is in the water - Still detects as surfaced, for now - 
-    /// Top Switch has NOT been Hit - Bottom Switch has been Hit -
-    /// Continues to suck in water - Sets float_surfaced to false -
-    /// Reasoning: as to directly move to the next if checker
-    else if (float_surfaced == true && float_floored == false && digitalRead(12) == 0 && digitalRead(A3) == 1) { 
-      float_surfaced = false;
-      digitalWrite(outA, HIGH);
-      digitalWrite(outB, LOW);
-      digitalWrite(LED_BUILTIN, LOW);
-    }
-
-    /// Float is in the water - Float is neither Surfaced nor Floored
-    /// Top Switch has NOT been Hit - Bottom Switch has been Hit -
-    /// Float Motor is turned off to sink down
-    else if (float_surfaced == false && float_floored == false && digitalRead(12) == 0 && digitalRead(A3) == 1) { 
-      digitalWrite(outA, LOW);                            
-      digitalWrite(outB, LOW);
-      digitalWrite(LED_BUILTIN, LOW);
-    }
-
-    /// Float is in the water - Float is or has been Currently Floored
-    /// Top Switch has NOT been Hit - Bottom Switch has been Hit
-    /// Float Motor is turned on to push out water, i.e counter clockwise direction
-    else if (float_surfaced == false && float_floored == true && digitalRead(12) == 0 && digitalRead(A3) == 1) { 
-      digitalWrite(outA, LOW);                           
-      digitalWrite(outB, HIGH);
-      digitalWrite(LED_BUILTIN, LOW);
-    }
-
-    /// Float is in the water - Float is or has been Currently Floored
-    /// Top Switch has been Hit - Bottom Switch has been Hit
-    /// Float Motor is turned on to push out water, i.e counter clockwise direction
-    //// Note this is essentially just a failsaf, ensuring that it pushes out all of the water
-    else if (float_surfaced == false && float_floored == true && digitalRead(12) == 1 && digitalRead(A3) == 1) {
-      digitalWrite(outA, LOW);                                                  
-      digitalWrite(outB, HIGH);
-      digitalWrite(LED_BUILTIN, LOW);
-    }
-
-    /// Float is in the water - Float is or has been Currently Floored
-    /// Top switch has been Hit - Bottomw Switch has NOT been Hit
-    /// Float Motor is turned off, to let the float resurface
-    /// float_floored is set back to false so that the code can rerun again
-    else if (float_surfaced == false && float_floored == true && digitalRead(12) == 1 && digitalRead(A3) == 0) {
-      float_floored = false;
-      digitalWrite(outA, LOW);                                                    
-      digitalWrite(outB, LOW);
-      digitalWrite(LED_BUILTIN, LOW);
-    }
-
-    /// Floats been surfaced and is not floored, obviously lol
-    /// Top switch has been NOT Hit - Bottom Switch has been Hit
-    /// Float Motor should now be sucking in water, essentailly restarting back to the top of the list of the float movement
-    else if (float_surfaced == true && float_floored == false && digitalRead(12) == 0 && digitalRead(A3) == 1) {
-      digitalWrite(outA, HIGH);                     
-      digitalWrite(outB, LOW);
-      digitalWrite(LED_BUILTIN, LOW);
-    }
-
+    float_curr_state = psiCompare(psi_half_sec, psi_full_sec, switch_bottom_state, switch_top_state);
+    motorDirection(float_curr_state);
     /*
     else if (//Put code which determines if the float is at a depth of 2.5m){
       digitalWrite(outA, LOW);                                                    
@@ -341,15 +259,12 @@ void loop() {
     */
 
     //// End of Motor Movement Determiner Section
-
-
     //// Multi-threading part ٩( ᐖ )۶
 #pragma region PSI Data Code
     if (current_millis - list_updater_millis >= LIST_UPDATER_INTERVAL){
       list_updater_millis = current_millis;
       psiList.add(psi);
     }
-
     /// Half Sec PSI
     if (current_millis - psi_task_half_millis >= PSI_TASK_HALF_INTERVAL){
       psi_task_full_millis = current_millis;
@@ -360,8 +275,6 @@ void loop() {
       psi_task_full_millis = current_millis;
       psi_full_sec = psi;
     }
-    
-
     /// Detrminer to decide whether or not the float is floored or surfaced
     /// Based on if there is a significant change in pressure
     if (current_millis - psi_change_check_millis >= PSI_CHANGE_CHECK_INTERVAL)
@@ -385,7 +298,6 @@ void loop() {
   // SUBMURSED - If the Bottom Switch is NOT PRESSED & the NOT TOP Switch is PRESSED, then it must be SUBMURSED
 enum Float_State psiCompare(int half_time_psi, int full_time_psi, enum Switch_State switch_bottom_state, enum Switch_State switch_top_state){
   int calc_psi_diff = abs(full_time_psi - half_time_psi);
-
   if (calc_psi_diff <= 1){
     if(switch_bottom_state == ACTIVE && switch_top_state == INACTIVE){
       return SURFACED;
@@ -394,12 +306,24 @@ enum Float_State psiCompare(int half_time_psi, int full_time_psi, enum Switch_St
     } else if(switch_bottom_state == INACTIVE && switch_top == INACTIVE){
       return SUBMURSED;
     }
+  } else{
+    return MOVING;
   }
 }
 
 // Main Bulk of the Code
-void motorDirection(enum State float_state, enum Switch_State switch_bottom_state, enum Switch_State switch_top_state){
-
+void motorDirection(enum State float_state){
+  if (float_state == SURFACED){
+      // Makes the Motor Move Counter-Clockwise, So Suck In Water Making Float Move Down
+      digitalWrite(outA, LOW);                     
+      digitalWrite(outB, HIGH);
+      digitalWrite(LED_BUILTIN, LOW);
+  } else if(float_state == SUBMURSED || float_state == FLOORED){
+      // Makes the Motor Move Clockwise, So Push Out Water Making Float Move Up
+      digitalWrite(outA, HIGH);                     
+      digitalWrite(outB, LOW);
+      digitalWrite(LED_BUILTIN, LOW);
+  }
 }
 
 void switchBottomDetect(){
