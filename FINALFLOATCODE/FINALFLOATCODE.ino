@@ -122,8 +122,8 @@ void setup() {
   digitalWrite(diag_port_B, HIGH);
 
   // Resistor setting for the Limit Swtches
-  pinmode(12, INPUT_PULLUP);
-  pinmode(A1, INPUT_PULLUP);
+  pinMode(12, INPUT_PULLUP);
+  pinMode(A1, INPUT_PULLUP);
   digitalWrite(LED_BUILTIN, LOW);
   #pragma endregion
 
@@ -169,7 +169,6 @@ const long LIST_UPDATER_INTERVAL = 5000;
 
 #pragma region Main_Program/Loop
 void loop() {
-  
   // Millis Timer Start
   unsigned long current_millis = millis();
 
@@ -265,8 +264,7 @@ enum Float_State psiCompare(int half_time_psi, int full_time_psi, enum Switch_St
 
 // Main Bulk of the Code
 void motorDirection(enum State float_state){
-  switch (float_state)
-  {
+  switch (float_state){
   case SURFACED // Counter-Clockwise Motor Movemenet, Sucks in water
     digitalWrite(outA, LOW);
     digitalWrite(outB, HIGH);
@@ -282,6 +280,11 @@ void motorDirection(enum State float_state){
     digitalWrite(outA, HIGH);
     digitalWrite(outB, LOW);
     break;
+
+   case MOVING
+    digitalWrite(outA, LOW);
+    digitalWrite(outB, LOW);
+    break;
   
   default: // defaults to have the motor to be stalled
     digitalWrite(outA, LOW);
@@ -293,7 +296,7 @@ void motorDirection(enum State float_state){
 
 void switchBottomDetect(){
   if (digitalRead(A3) == HIGH){
-    switch_bottom_state = ACTIVE
+    switch_bottom_state = ACTIVE;
   } else{
     bottom_switch_pressed = INACTIVE;
   }
