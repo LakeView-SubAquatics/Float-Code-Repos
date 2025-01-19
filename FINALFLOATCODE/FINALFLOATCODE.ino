@@ -253,17 +253,17 @@ void sendData(){
   String data = "PSI: ";
   // Adds each data from the psi list
   for (float psi : psiList){
-    data +=  String(psi) + ",";
+    data +=  String(psi) + ", ";
   }
   // Adds each data from the depth list
   data += "DEPTH: ";
   for (float depth : depthList){
-    data +=  String(depth) + ",";
+    data +=  String(depth) + ", ";
   }
   // adds each data from the timeList
   data += "TIME: ";
   for (unsigned long time : timeList){
-    data += string(time) + ",";
+    data += string(time) + ", ";
   }
 
   // Converts the string data into a char list
