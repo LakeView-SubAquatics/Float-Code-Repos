@@ -205,7 +205,7 @@ void loop() {
     // Motor Direction Determined after the Float State is Determined
     motorDirection(float_curr_state);
     // Extra Determiner in case the motor direfction fails
-    if (float_curr_state == MAINTAIN){
+    if (float_curr_state == MAINTAIN){ 
       maintainDepth(current_millis);
     }
 
@@ -236,7 +236,6 @@ void loop() {
     }
     #pragma endregion
 
-    // Sends all current data once the float has surfaced
     if (float_curr_state == SURFACED){
       sendData();
     }
@@ -335,6 +334,9 @@ void motorDirection(enum State float_state){
     break;
   
    case MAINTAIN:
+   // Default to stall
+    digitalWrite(outA, LOW);
+    digitalWrite(outB, LOW);
     maintain_depth_millis = millis(); // Starts a Timer
     break;
 
