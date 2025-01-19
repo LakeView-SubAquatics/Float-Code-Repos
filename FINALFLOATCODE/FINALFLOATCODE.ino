@@ -204,7 +204,6 @@ void loop() {
     float_curr_state = psiCompare(psi_half_sec, psi_full_sec, depth, switch_bottom_state, switch_top_state);
     // Motor Direction Determined after the Float State is Determined
     motorDirection(float_curr_state);
-    // Extra Determiner in case the motor direfction fails
     if (float_curr_state == MAINTAIN){ 
       maintainDepth(current_millis);
     }
