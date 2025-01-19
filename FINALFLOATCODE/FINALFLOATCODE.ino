@@ -2,7 +2,7 @@
   Author(s): Tyerone Chen, Danny Henningfield, Adam Palma, 
 
     Innit Create: 6/30/2024
-      Last update: 12/30/2024
+      Last update: 1/18/2025
 */
 
 // Arduino Float Code Remake
@@ -59,11 +59,11 @@ ezButton switch_top(12);   // Top Swtch Connected to pin 12
 ezButton switch_bottom(A3);// Bottom Switch connected to pin A3
 
 // Enum for Float States
-  // SURFACED - 
-  // SUBMURSED - 
-  // MOVING - 
-  // MAINTAIN - 
-  // FLOORED - 
+  // SURFACED - The Float is currently surfaced at the top of the water
+  // SUBMURSED - The FLoat is currently under the water, but presumed to be not moving. Mostly used as a placeholder in case of a unforseen error.
+  // MOVING - The Float is currently moving, presumed as under water.
+  // MAINTAIN - The FLoat is maintaing a desired depth, currently not moving
+  // FLOORED -  The FLoat is at the bottom of the pool, currently not moving
 enum Float_State {
   SURFACED,
   SUBMURSED,
@@ -76,8 +76,8 @@ enum Float_State {
 volatile Float_State float_curr_state = SURFACED;
 
 // Enum for Switch States
-  //  ACTIVE - 
-  // INACTIVE -
+  //  ACTIVE - Switch is being activated/pressed
+  // INACTIVE - Switch is NOT being activated/pressed
 enum Switch_State{
   ACTIVE,
   INACTIVE
@@ -88,9 +88,9 @@ volatile Switch_State switch_top_state = INACTIVE;
 volatile Switch_State switch_bottom_state = INACTIVE;
 
 // Enum for Motor Direction
-  // CLOCKWISE - 
-  // COUNTERCLOCKWISE - 
-  // STALLED - 
+  // CLOCKWISE - Motor is moving downwards, towards the bottom switch
+  // COUNTERCLOCKWISE - Motor is moving upwards, towards the top switch
+  // STALLED - Motor is not being moved
 enum Motor_Direction {
   CLOCKWISE,
   COUNTERCLOCKWISE,
@@ -101,7 +101,7 @@ enum Motor_Direction {
 #pragma region Setup
 void setup() {
   #pragma region Pin_Definition
-
+  // Defines what each pin should be setup to respond as
   analogWrite(pwm_port, DUTY_CYCLE);
   pinMode(RFM95_RST, OUTPUT);
   digitalWrite(RFM95_RST, HIGH);
@@ -113,7 +113,7 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(12), switchTopDetect, CHANGE);
   attachInterrupt(digitalPinToInterrupt(A3), switchBottomDetect, CHANGE);
 
-  // Initiates how each pin on the board should work
+  // Initiates how each pin on the board should respond
   pinMode(outA, OUTPUT);
   pinMode(outB, OUTPUT);
   pinMode(diag_port_A, INPUT_PULLUP);
@@ -130,26 +130,27 @@ void setup() {
   digitalWrite(LED_BUILTIN, LOW);
   #pragma endregion
 
-  // Feather LoRa TX Test!
+  // Feather LoRa TX Tester
   digitalWrite(RFM95_RST, LOW);
   digitalWrite(RFM95_RST, HIGH);
 
+  // Radio response handleres
   while (!rf95.init()) {
     handleNoResponse() // No Responce Handler
   }
-
   if (!rf95.setFrequency(RF95_FREQ)) {
     handleNoResponse() // No Responce Handler
   }
-  //Set Freq to: RF95_FREQ
+  //Sets Freq to: RF95_FREQ
   rf95.setTxPower(23, false);
 }
 #pragma endregion
 
-//to init and define it 
+//Innitializes and defines the packet size
 int16_t packetnum = 0;
 
-// "Multithreading Section"
+// "Multithreading Section
+// Millis Timer Variables
 unsigned long radio_task_millis = 0;
 unsigned long psi_task_half_millis = 0;
 unsigned long psi_task_full_millis = 0;
@@ -157,6 +158,7 @@ unsigned long psi_change_check_millis = 0;
 unsigned long list_updater_millis = 0;
 unsigned long maintain_depth_millis = 0;
 
+// Task Interval Definements
 const long RADIO_TASK_INTERVAL = 1001;
 const long PSI_TASK_HALF_INTERVAL = 1001;
 const long PSI_TASK_FULL_INTERVAL = 1250;
@@ -178,7 +180,6 @@ void loop() {
   float depth = (pascal_pi / (1000 * 9.81) ); // Caqlculated in Meters
 
 #pragma region Radio_Communications 
-  
   // Radio Communication Checker
   if (current_millis - radio_task_millis >= RADIO_TASK_INTERVAL){
     radio_task_millis = current_millis;
@@ -192,11 +193,11 @@ void loop() {
         strncpy(received_data, (char*)buf, len);
       } 
       else {
-        //Receive failed
+        handleNoResponse() // No Responce Handler
       }
     } 
     else {
-      // No reply, is there a listener around?
+      handleNoResponse() // No Responce Handler
     }
   }
   // End of Radio Communication Checker
@@ -205,13 +206,13 @@ void loop() {
   // Code which actualy starts/functions after passing the radio communcation check
   if (strcmp(received_data, "initiate") == 0) {
     // Reminder Top Switch is 12, and Bottom Switch is A3
-    // Motor Movement Determiner
+    // Float State determined based on the psi change and what switches are and aren't bneing pressed
     float_curr_state = psiCompare(psi_half_sec, psi_full_sec, depth, switch_bottom_state, switch_top_state);
+    // Motor Direction Determined after the Float State is Determined
     motorDirection(float_curr_state);
-
+    // Extra Determiner in case the motor direfction fails
     if (float_curr_state == MAINTAIN){
       maintainDepth(current_millis);
-
     }
 
 #pragma region PSI Data Code
@@ -237,9 +238,8 @@ void loop() {
       float_curr_state = psiCompare(psi_half_sec, psi_full_sec, switch_bottom_state, switch_top_state);
     }
   }
-}
 #pragma endregion
-
+}
 #pragma endregion
 
 
@@ -253,6 +253,7 @@ void handleNoResponse(){
 }
 
 // Calculates the change in PSI. If it is < 1, then it detects there is MINIMAL change in PSI, meaning that the Float is in one of 3 states
+  // MAINTAIN - IF the current Depth is between 2.5m - 2.6m, the State must be MAINTAIN
   // SURFACED - If the Bottom Switch is PRESSED & the TOP Switch is NOT PRESSED, then it must be SURFACED
   // FLOORED - If the Bottom Switch is NOT PRESSED & the TOP Switch is PRESSED, then it must be FLOORED
   // SUBMURSED - If the Bottom Switch is NOT PRESSED & the NOT TOP Switch is PRESSED, then it must be SUBMURSED
@@ -261,22 +262,23 @@ enum Float_State psiCompare(float half_time_psi, float full_time_psi, float curr
   float calc_psi_diff = abs(full_time_psi - half_time_psi);
 
   if (calc_psi_diff <= 1.0){
-    if(switch_bottom_state == ACTIVE && switch_top_state == INACTIVE){
+    if(curr_depth < 2.6 && curr_depth > 2.5){
+      return MAINTAIN;
+    } else if (switch_bottom_state == ACTIVE && switch_top_state == INACTIVE){
       return SURFACED;
     } else if(switch_bottom_state == INACTIVE && switch_top_state == ACTIVE){
       return FLOORED;
-    }  else if (switch_bottom_state == INACTIVE && switch_top == INACTIVE && curr_depth < 2.59 && curr_depth > 2.5){
-      // Will Return as MAINTAIN state if the currenmt Depth is between 2.5m - 2.59m
-      return MAINTAIN;
-    }
     } else if(switch_bottom_state == INACTIVE && switch_top == INACTIVE){
       return SUBMURSED;
     } else{
     return MOVING;
+    }
   }
 }
 
 // Main Bulk of the Code
+
+// Motor Diurefction determiner, based on float state
 void motorDirection(enum State float_state){
   switch (float_state){
   case SURFACED: // Counter-Clockwise Motor Movemenet, Sucks in water
@@ -312,6 +314,7 @@ void motorDirection(enum State float_state){
   digitalWrite(LED_BUILTIN, LOW); // Ensures switch will always have a resistor setup regardless of state
 }
 
+// Depth Maintainer
 void maintainDepth(unsigned long current_millis){
   // Once the time reaches 1 minute, resumes to moving satate
   if (current_millis - maintain_depth_millis >= MAINTAIN_DEEPTH_DURATION){
@@ -324,6 +327,8 @@ void maintainDepth(unsigned long current_millis){
   }
 }
 
+
+// Switch Detections
 void switchBottomDetect(){
   if (digitalRead(A3) == HIGH){
     switch_bottom_state = ACTIVE;
