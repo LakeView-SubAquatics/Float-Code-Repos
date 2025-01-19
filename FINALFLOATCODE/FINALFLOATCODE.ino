@@ -96,7 +96,6 @@ enum Motor_Direction {
 
 #pragma region Setup
 void setup() {
-  #pragma region Pin_Definition
   // Defines what each pin should be setup to respond as
   analogWrite(pwm_port, DUTY_CYCLE);
   pinMode(RFM95_RST, OUTPUT);
@@ -124,7 +123,6 @@ void setup() {
   pinMode(12, INPUT_PULLUP);
   pinMode(A1, INPUT_PULLUP);
   digitalWrite(LED_BUILTIN, LOW);
-  #pragma endregion
 
   // Feather LoRa TX Tester
   digitalWrite(RFM95_RST, LOW);
