@@ -5,11 +5,7 @@
       Last update: 1/18/2025
 */
 
-// Arduino Float Code Remake
-
-// Side Note, we need to comment the crap out of this becuase i had an 
-// aneurism reading the old code （´∇｀''）
-// Adam note: me too, i am now brain damaged .-.
+//// Arduino Float Code Remake
 
 // Included Library
 #include <SPI.h>
@@ -31,12 +27,12 @@ RH_RF95 rf95(RFM95_CS, RFM95_INT);
 #pragma region Variable_Definement
 
 // List Definition
-  // psiList - float
-  // depthList - float
-  // timeList - int
+  // psiList - float - Contains the data colelceted of the psi
+  // depthList - float - Contains the data coillected of the depth
+  // timeList - int - Contains a rough time that is parralel to the previous lists
 List<float> psiList;
 List<float> depthList;
-List<int> timeList;
+List<unsigned long> timeList;
 
 // Recievement Data Innitializer
 char received_data[RH_RF95_MAX_MESSAGE_LEN];
@@ -215,10 +211,13 @@ void loop() {
       maintainDepth(current_millis);
     }
 
-#pragma region PSI Data Code
+    #pragma region PSI Data Code
+    // List Data Adder
     if (current_millis - list_updater_millis >= LIST_UPDATER_INTERVAL){
       list_updater_millis = current_millis;
       psiList.add(psi);
+      depthList.add(depth);
+      timeList.add(current_millis);
     }
     /// Half Sec PSI
     if (current_millis - psi_task_half_millis >= PSI_TASK_HALF_INTERVAL){
@@ -237,8 +236,13 @@ void loop() {
 
       float_curr_state = psiCompare(psi_half_sec, psi_full_sec, switch_bottom_state, switch_top_state);
     }
+    #pragma endregion
+
+    // Sends all current data once the float has surfaced
+    if (float_curr_state == SURFACED){
+      sendData();
+    }
   }
-#pragma endregion
 }
 #pragma endregion
 
@@ -246,11 +250,40 @@ void loop() {
 // Functions
 #pragma region Functions
 
+void sendData(){
+  // Inntialy defines the data
+  String data = "PSI: ";
+  // Adds each data from the psi list
+  for (float psi : psiList){
+    data +=  String(psi) + ",";
+  }
+  // Adds each data from the depth list
+  data += "DEPTH: ";
+  for (float depth : depthList){
+    data +=  String(depth) + ",";
+  }
+  // adds each data from the timeList
+  data += "TIME: ";
+  for (unsigned long time : timeList){
+    data += string(time) + ",";
+  }
+
+  // Converts the string data into a char list
+  char send_buffer[RH_RF95_MAX_MESSAGE_LEN];
+  message.toCharArray(send_buffer, RH_RF95_MAX_MESSAGE_LEN);
+
+  // Sends sed list
+  rf95.send((uint8_t *)send_buffer, strlen(send_buffer));
+  rf95.waitPacketSent();
+}
+
+
 // Handles any issues when there is no response from the radio
 void handleNoResponse(){
   float_curr_state = STALLED; // Defaults float to stall
   strncpy(received_data, "", sizeof(received_data)); // Clears out recieved_data
 }
+
 
 // Calculates the change in PSI. If it is < 1, then it detects there is MINIMAL change in PSI, meaning that the Float is in one of 3 states
   // MAINTAIN - IF the current Depth is between 2.5m - 2.6m, the State must be MAINTAIN
@@ -276,7 +309,8 @@ enum Float_State psiCompare(float half_time_psi, float full_time_psi, float curr
   }
 }
 
-// Main Bulk of the Code
+
+//// Main Bulk of the Code
 
 // Motor Diurefction determiner, based on float state
 void motorDirection(enum State float_state){
@@ -313,6 +347,7 @@ void motorDirection(enum State float_state){
   }
   digitalWrite(LED_BUILTIN, LOW); // Ensures switch will always have a resistor setup regardless of state
 }
+
 
 // Depth Maintainer
 void maintainDepth(unsigned long current_millis){
