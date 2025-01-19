@@ -49,12 +49,10 @@ float psi_calc = 0;
 // Arduino & Motor Port Connection Variables Definition
 int outA = 5;
 int diag_port_A = 6;
-
 int outB = 11;
 int diag_port_B = 10;
 
 int pwm_port = 9;
-
 const DUTY_CYCLE = 255;
 
 ezButton switch_top(12);   // Top Swtch Connected to pin 12
@@ -64,11 +62,13 @@ ezButton switch_bottom(A3);// Bottom Switch connected to pin A3
   // SURFACED - 
   // SUBMURSED - 
   // MOVING - 
+  // MAINTAIN - 
   // FLOORED - 
 enum Float_State {
   SURFACED,
   SUBMURSED,
   MOVING,
+  MAINTAIN,
   FLOORED
 };
 
@@ -109,6 +109,9 @@ void setup() {
   // Removes the Delay which the component would detect the Switch Having activity.
   switch_top.setDebounceTime(0);   
   switch_bottom.setDebounceTime(0); 
+    // Attach interrupt handler for top switch
+  attachInterrupt(digitalPinToInterrupt(12), switchTopDetect, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(A3), switchBottomDetect, CHANGE);
 
   // Initiates how each pin on the board should work
   pinMode(outA, OUTPUT);
@@ -132,21 +135,14 @@ void setup() {
   digitalWrite(RFM95_RST, HIGH);
 
   while (!rf95.init()) {
-    // LoRa radio init failed
-    // Uncomment '#define SERIAL_DEBUG' in RH_RF95.cpp for detailed debug info
+    handleNoResponse() // No Responce Handler
   }
 
   if (!rf95.setFrequency(RF95_FREQ)) {
-    //setFrequency failed!
-    while (1);  // lock up code, this would suck 
+    handleNoResponse() // No Responce Handler
   }
   //Set Freq to: RF95_FREQ
-
-  // set transfer power to 0
   rf95.setTxPower(23, false);
-  // Attach interrupt handler for top switch
-  attachInterrupt(digitalPinToInterrupt(12), switchTopDetect, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(A3), switchBottomDetect, CHANGE);
 }
 #pragma endregion
 
@@ -159,12 +155,14 @@ unsigned long psi_task_half_millis = 0;
 unsigned long psi_task_full_millis = 0;
 unsigned long psi_change_check_millis = 0;
 unsigned long list_updater_millis = 0;
+unsigned long maintain_depth_millis = 0;
 
 const long RADIO_TASK_INTERVAL = 1001;
 const long PSI_TASK_HALF_INTERVAL = 1001;
 const long PSI_TASK_FULL_INTERVAL = 1250;
 const long PSI_CHANGE_CHECK_INTERVAL = 500;
-const long LIST_UPDATER_INTERVAL = 5000;
+const long LIST_UPDATER_INTERVAL = 5000; // 5 Seconds
+const long MAINTAIN_DEEPTH_DURATION = 60000; // 1 minute 
 
 
 #pragma region Main_Program/Loop
@@ -172,10 +170,12 @@ void loop() {
   // Millis Timer Start
   unsigned long current_millis = millis();
 
-  /// Pressure CaLCULATION
+  /// Pressure Based CaLCULATION
     // makes sure that the pressure pin is set to A1
   int pressure_pin = analogRead(A1);
   float psi = (0.0374 * pressure_pin) - 3.3308;
+  float pascal_pi = psi * 6894.76;
+  float depth = (pascal_pi / (1000 * 9.81) ); // Caqlculated in Meters
 
 #pragma region Radio_Communications 
   
@@ -205,10 +205,14 @@ void loop() {
   // Code which actualy starts/functions after passing the radio communcation check
   if (strcmp(received_data, "initiate") == 0) {
     // Reminder Top Switch is 12, and Bottom Switch is A3
-
     // Motor Movement Determiner
-    float_curr_state = psiCompare(psi_half_sec, psi_full_sec, switch_bottom_state, switch_top_state);
+    float_curr_state = psiCompare(psi_half_sec, psi_full_sec, depth, switch_bottom_state, switch_top_state);
     motorDirection(float_curr_state);
+
+    if (float_curr_state == MAINTAIN){
+      maintainDepth(current_millis);
+
+    }
 
 #pragma region PSI Data Code
     if (current_millis - list_updater_millis >= LIST_UPDATER_INTERVAL){
@@ -242,11 +246,18 @@ void loop() {
 // Functions
 #pragma region Functions
 
+// Handles any issues when there is no response from the radio
+void handleNoResponse(){
+  float_curr_state = STALLED; // Defaults float to stall
+  strncpy(received_data, "", sizeof(received_data)); // Clears out recieved_data
+}
+
 // Calculates the change in PSI. If it is < 1, then it detects there is MINIMAL change in PSI, meaning that the Float is in one of 3 states
   // SURFACED - If the Bottom Switch is PRESSED & the TOP Switch is NOT PRESSED, then it must be SURFACED
   // FLOORED - If the Bottom Switch is NOT PRESSED & the TOP Switch is PRESSED, then it must be FLOORED
   // SUBMURSED - If the Bottom Switch is NOT PRESSED & the NOT TOP Switch is PRESSED, then it must be SUBMURSED
-enum Float_State psiCompare(int half_time_psi, int full_time_psi, enum Switch_State switch_bottom_state, enum Switch_State switch_top_state){
+enum Float_State psiCompare(float half_time_psi, float full_time_psi, float curr_depth, 
+    enum Switch_State switch_bottom_state, enum Switch_State switch_top_state){
   float calc_psi_diff = abs(full_time_psi - half_time_psi);
 
   if (calc_psi_diff <= 1.0){
@@ -254,9 +265,12 @@ enum Float_State psiCompare(int half_time_psi, int full_time_psi, enum Switch_St
       return SURFACED;
     } else if(switch_bottom_state == INACTIVE && switch_top_state == ACTIVE){
       return FLOORED;
+    }  else if (switch_bottom_state == INACTIVE && switch_top == INACTIVE && curr_depth < 2.59 && curr_depth > 2.5){
+      // Will Return as MAINTAIN state if the currenmt Depth is between 2.5m - 2.59m
+      return MAINTAIN;
+    }
     } else if(switch_bottom_state == INACTIVE && switch_top == INACTIVE){
       return SUBMURSED;
-    }  
     } else{
     return MOVING;
   }
@@ -265,33 +279,49 @@ enum Float_State psiCompare(int half_time_psi, int full_time_psi, enum Switch_St
 // Main Bulk of the Code
 void motorDirection(enum State float_state){
   switch (float_state){
-  case SURFACED // Counter-Clockwise Motor Movemenet, Sucks in water
+  case SURFACED: // Counter-Clockwise Motor Movemenet, Sucks in water
     digitalWrite(outA, LOW);
     digitalWrite(outB, HIGH);
     break;
   
-  case SUBMURSED // Clockwise Motor Movemenet, Pushes out water
+  case SUBMURSED: // Clockwise Motor Movemenet, Pushes out water
   // Add code where it'll stay at a certain depth for a certain amount of time before resuming movement
     digitalWrite(outA, HIGH);
     digitalWrite(outB, LOW);
     break;
   
-   case FLOORED // Clockwise Motor Movemenet, Pushes out water
+   case FLOORED: // Clockwise Motor Movemenet, Pushes out water
     digitalWrite(outA, HIGH);
     digitalWrite(outB, LOW);
     break;
 
-   case MOVING
+   case MOVING:
     digitalWrite(outA, LOW);
     digitalWrite(outB, LOW);
     break;
   
+   case MAINTAIN:
+    maintain_depth_millis = millis(); // Starts a Timer
+    break;
+
   default: // defaults to have the motor to be stalled
     digitalWrite(outA, LOW);
     digitalWrite(outB, LOW);
     break;
   }
   digitalWrite(LED_BUILTIN, LOW); // Ensures switch will always have a resistor setup regardless of state
+}
+
+void maintainDepth(unsigned long current_millis){
+  // Once the time reaches 1 minute, resumes to moving satate
+  if (current_millis - maintain_depth_millis >= MAINTAIN_DEEPTH_DURATION){
+    float_curr_state = MOVING;
+  } else{
+    // If not it'll stay at a no movement state
+    digitalWrite(outA, LOW);
+    digitalWrite(outB, LOW);
+    digitalWrite(LED_BUILTIN, LOW);
+  }
 }
 
 void switchBottomDetect(){
