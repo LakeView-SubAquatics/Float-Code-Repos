@@ -8,7 +8,7 @@
 //// Arduino Float Code Remake
 
 // Included Library
-#include <SPI.h>
+#include <SPI.h> // Used for synchronization of communication between different boards
 #include <RH_RF95.h> // Used for the radio and specific adafruit board used
 #include <ezButton.h> // Used for the much better button/switch detection
 #include <List.hpp> // Used for the simpler functionality to make lists, instead of having to manually redefine arrays.
