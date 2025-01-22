@@ -307,8 +307,6 @@ enum Float_State psiCompare(float half_time_psi, float full_time_psi, float curr
 }
 
 
-//// Main Bulk of the Code
-
 // Motor Diurefction determiner, based on float state
 void motorDirection(enum State float_state){
   switch (float_state){
