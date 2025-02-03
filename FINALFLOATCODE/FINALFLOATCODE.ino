@@ -121,8 +121,7 @@ void setup() {
 
   // Resistor setting for the Limit Swtches
   pinMode(12, INPUT_PULLUP);
-  pinMode(A1, INPUT_PULLUP);
-  digitalWrite(LED_BUILTIN, LOW);
+  pinMode(A3, INPUT_PULLUP);
 
   // Feather LoRa TX Tester
   digitalWrite(RFM95_RST, LOW);
@@ -173,6 +172,14 @@ void loop() {
   float pascal_pi = psi * 6894.76;
   float depth = (pascal_pi / (1000 * 9.81) ); // Caqlculated in Meters
 
+  // EzButton Setup 
+  // Used for as a alternative switch detection
+  switch_top.loop();
+  switch_bottom.loop();
+
+  bool ez_switch_top = switch_top.isPressed();
+  bool ez_switch_bottom = switch_bottom.isPressed();
+
 #pragma region Radio_Communications 
   // Radio Communication Checker
   if (current_millis - radio_task_millis >= RADIO_TASK_INTERVAL){
@@ -199,14 +206,16 @@ void loop() {
 
   // Code which actualy starts/functions after passing the radio communcation check
   if (strcmp(received_data, "initiate") == 0) {
+
     // Reminder Top Switch is 12, and Bottom Switch is A3
     // Float State determined based on the psi change and what switches are and aren't bneing pressed
-    float_curr_state = psiCompare(psi_half_sec, psi_full_sec, depth, switch_bottom_state, switch_top_state);
+    float_curr_state = psiCompare(psi_half_sec, psi_full_sec, depth, switch_bottom_state, switch_top_state, ez_switch_bottom, ez_switch_top);
     // Motor Direction Determined after the Float State is Determined
     motorDirection(float_curr_state);
     if (float_curr_state == MAINTAIN){ 
       maintainDepth(current_millis);
     }
+
 
     #pragma region PSI Data Code
     // List Data Adder
@@ -246,6 +255,7 @@ void loop() {
 // Functions
 #pragma region Functions
 
+// Data Sending function to communicated radio
 void sendData(){
   // Inntialy defines the data
   String data = "PSI: ";
@@ -287,17 +297,17 @@ void handleNoResponse(){
   // FLOORED - If the Bottom Switch is NOT PRESSED & the TOP Switch is PRESSED, then it must be FLOORED
   // SUBMURSED - If the Bottom Switch is NOT PRESSED & the NOT TOP Switch is PRESSED, then it must be SUBMURSED
 enum Float_State psiCompare(float half_time_psi, float full_time_psi, float curr_depth, 
-    enum Switch_State switch_bottom_state, enum Switch_State switch_top_state){
+    enum Switch_State switch_bottom_state, enum Switch_State switch_top_state, bool ez_switch_bottom, bool ez_switch_top){
   float calc_psi_diff = abs(full_time_psi - half_time_psi);
 
   if (calc_psi_diff <= 1.0){
     if(curr_depth < 2.6 && curr_depth > 2.5){
       return MAINTAIN;
-    } else if (switch_bottom_state == ACTIVE && switch_top_state == INACTIVE){
+    } else if ((switch_bottom_state == ACTIVE && switch_top_state == INACTIVE) || (ez_switch_bottom == true && ez_switch_top == false)){
       return SURFACED;
-    } else if(switch_bottom_state == INACTIVE && switch_top_state == ACTIVE){
+    } else if((switch_bottom_state == INACTIVE && switch_top_state == ACTIVE) || (ez_switch_bottom == false && ez_switch_top == true)){
       return FLOORED;
-    } else if(switch_bottom_state == INACTIVE && switch_top == INACTIVE){
+    } else if((switch_bottom_state == INACTIVE && switch_top == INACTIVE) || (ez_switch_bottom == false && ez_switch_top == false)){
       return SUBMURSED;
     } else{
     return MOVING;
@@ -306,43 +316,53 @@ enum Float_State psiCompare(float half_time_psi, float full_time_psi, float curr
 }
 
 
+//// Main Bulk of the Code
+
 // Motor Diurefction determiner, based on float state
 void motorDirection(enum State float_state){
   switch (float_state){
   case SURFACED: // Counter-Clockwise Motor Movemenet, Sucks in water
     digitalWrite(outA, LOW);
     digitalWrite(outB, HIGH);
+    digitalWrite(LED_BUILTIN, LOW);
     break;
   
   case SUBMURSED: // Clockwise Motor Movemenet, Pushes out water
   // Add code where it'll stay at a certain depth for a certain amount of time before resuming movement
     digitalWrite(outA, HIGH);
     digitalWrite(outB, LOW);
+    digitalWrite(LED_BUILTIN, HIGH);
     break;
   
    case FLOORED: // Clockwise Motor Movemenet, Pushes out water
     digitalWrite(outA, HIGH);
     digitalWrite(outB, LOW);
+    digitalWrite(LED_BUILTIN, HIGH);
     break;
 
    case MOVING:
     digitalWrite(outA, LOW);
     digitalWrite(outB, LOW);
+    digitalWrite(LED_BUILTIN, LOW);
     break;
   
    case MAINTAIN:
    // Default to stall
     digitalWrite(outA, LOW);
     digitalWrite(outB, LOW);
+    digitalWrite(LED_BUILTIN, LOW);
     maintain_depth_millis = millis(); // Starts a Timer
     break;
 
   default: // defaults to have the motor to be stalled
     digitalWrite(outA, LOW);
     digitalWrite(outB, LOW);
+    digitalWrite(LED_BUILTIN, LOW);
     break;
   }
-  digitalWrite(LED_BUILTIN, LOW); // Ensures switch will always have a resistor setup regardless of state
+   // Ensures switch will always have a resistor setup regardless of state
+   pinMode(12, INPUT_PULLUP);
+   pinMode(A3, INPUT_PULLUP);
 }
 
 
@@ -356,24 +376,25 @@ void maintainDepth(unsigned long current_millis){
     digitalWrite(outA, LOW);
     digitalWrite(outB, LOW);
     digitalWrite(LED_BUILTIN, LOW);
+    pinMode(12, INPUT_PULLUP);
+    pinMode(A3, INPUT_PULLUP);
   }
 }
 
 
 // Switch Detections
+// if one of the switches is detected, it'll immediatly set the other as inactive
 void switchBottomDetect(){
   if (digitalRead(A3) == HIGH){
     switch_bottom_state = ACTIVE;
-  } else{
-    bottom_switch_pressed = INACTIVE;
+    switch_top_stateh = INACTIVE;
   }
 }
 
 void switchTopDetect(){
   if (digitalRead(12) == HIGH){
-    top_switch_pressed = ACTIVE;
-  } else{
-    top_switch_pressed = INACTIVE;
+    switch_top_stateh = ACTIVE;
+    switch_bottom_state = INACTIVE;
   }
 }
 
