@@ -49,7 +49,7 @@ int outB = 11;
 int diag_port_B = 10;
 
 int pwm_port = 9;
-const DUTY_CYCLE = 255;
+const int DUTY_CYCLE = 255;
 
 ezButton switch_top(12);   // Top Swtch Connected to pin 12
 ezButton switch_bottom(A3);// Bottom Switch connected to pin A3
@@ -129,10 +129,10 @@ void setup() {
 
   // Radio response handleres
   while (!rf95.init()) {
-    handleNoResponse() // No Responce Handler
+    handleNoResponse(); // No Responce Handler
   }
   if (!rf95.setFrequency(RF95_FREQ)) {
-    handleNoResponse() // No Responce Handler
+    handleNoResponse(); // No Responce Handler
   }
   //Sets Freq to: RF95_FREQ
   rf95.setTxPower(23, false);
@@ -194,11 +194,11 @@ void loop() {
         strncpy(received_data, (char*)buf, len);
       } 
       else {
-        handleNoResponse() // No Responce Handler
+        handleNoResponse(); // No Responce Handler
       }
     } 
     else {
-      handleNoResponse() // No Responce Handler
+      handleNoResponse(); // No Responce Handler
     }
   }
   // End of Radio Communication Checker
@@ -271,12 +271,12 @@ void sendData(){
   // adds each data from the timeList
   data += "TIME: ";
   for (unsigned long time : timeList){
-    data += string(time) + ", ";
+    data += String(time) + ", ";
   }
 
   // Converts the string data into a char list
   char send_buffer[RH_RF95_MAX_MESSAGE_LEN];
-  message.toCharArray(send_buffer, RH_RF95_MAX_MESSAGE_LEN);
+  data.toCharArray(send_buffer, RH_RF95_MAX_MESSAGE_LEN);
 
   // Sends sed list
   rf95.send((uint8_t *)send_buffer, strlen(send_buffer));
@@ -307,11 +307,14 @@ enum Float_State psiCompare(float half_time_psi, float full_time_psi, float curr
       return SURFACED;
     } else if((switch_bottom_state == INACTIVE && switch_top_state == ACTIVE) || (ez_switch_bottom == false && ez_switch_top == true)){
       return FLOORED;
-    } else if((switch_bottom_state == INACTIVE && switch_top == INACTIVE) || (ez_switch_bottom == false && ez_switch_top == false)){
+    } else if((switch_bottom_state == INACTIVE && switch_top_state == INACTIVE) || (ez_switch_bottom == false && ez_switch_top == false)){
       return SUBMURSED;
     } else{
     return MOVING;
     }
+  }
+  else{
+    return MAINTAIN;
   }
 }
 
