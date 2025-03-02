@@ -2,7 +2,7 @@
   Author(s): Tyerone Chen, Danny Henningfield, Adam Palma, 
 
     Innit Create: 6/30/2024
-      Last update: 2/2/2025
+      Last update: 3/1/2025
 */
 
 //// Arduino Float Code Remake
@@ -33,6 +33,9 @@ RH_RF95 rf95(RFM95_CS, RFM95_INT);
 List<float> psiList;
 List<float> depthList;
 List<unsigned long> timeList;
+
+// Max List Size
+const int MAX_LIST_SIZE = 2000;
 
 // Recievement Data Innitializer
 char received_data[RH_RF95_MAX_MESSAGE_LEN];
@@ -102,8 +105,8 @@ void setup() {
   digitalWrite(RFM95_RST, HIGH);
 
   // Removes the Delay which the component would detect the Switch Having activity.
-  switch_top.setDebounceTime(0);   
-  switch_bottom.setDebounceTime(0); 
+  switch_top.setDebounceTime(50);   
+  switch_bottom.setDebounceTime(50); 
     // Attach interrupt handler for top switch
   attachInterrupt(digitalPinToInterrupt(12), switchTopDetect, CHANGE);
   attachInterrupt(digitalPinToInterrupt(A3), switchBottomDetect, CHANGE);
@@ -122,6 +125,9 @@ void setup() {
   // Resistor setting for the Limit Swtches
   pinMode(12, INPUT_PULLUP);
   pinMode(A3, INPUT_PULLUP);
+
+  // Set init state for float state
+  float_curr_state = psiCompare(psi_half_sec, psi_full_sec, 0.0, switch_bottom_state, switch_top_state, false, false);
 
   // Feather LoRa TX Tester
   digitalWrite(RFM95_RST, LOW);
@@ -152,10 +158,10 @@ unsigned long list_updater_millis = 0;
 unsigned long maintain_depth_millis = 0;
 
 // Task Interval Definements
-const long RADIO_TASK_INTERVAL = 1001;
-const long PSI_TASK_HALF_INTERVAL = 1001;
-const long PSI_TASK_FULL_INTERVAL = 1250;
-const long PSI_CHANGE_CHECK_INTERVAL = 500;
+const long RADIO_TASK_INTERVAL = 1001; // About 1 second
+const long PSI_TASK_HALF_INTERVAL = 1001; // About 1 second
+const long PSI_TASK_FULL_INTERVAL = 1250; // About 1.25 seconds
+const long PSI_CHANGE_CHECK_INTERVAL = 500; // 1/2 a second
 const long LIST_UPDATER_INTERVAL = 5000; // 5 Seconds
 const long MAINTAIN_DEEPTH_DURATION = 60000; // 1 minute 
 
@@ -221,6 +227,15 @@ void loop() {
     // List Data Adder
     if (current_millis - list_updater_millis >= LIST_UPDATER_INTERVAL){
       list_updater_millis = current_millis;
+      // Checks list size
+      // Clears out any old data
+      if (psiList.size() >= MAX_LIST_SIZE){
+        psiList.remove(0);
+        depthList.remove(0);
+        timeList.remove(0);
+      }
+      
+      // Adds data onto the list
       psiList.add(psi);
       depthList.add(depth);
       timeList.add(current_millis);
@@ -248,6 +263,15 @@ void loop() {
       sendData();
     }
   }
+  
+  if (strcmp(received_data, "initiate") != 0){
+    // Stalls the Motor
+    digitalWrite(outA, LOW);
+    digitalWrite(outB, LOW);
+    pinMode(12, INPUT_PULLUP);
+    pinMode(A3, INPUT_PULLUP);
+    digitalWrite(LED_BUILTIN, LOW);
+  }
 }
 #pragma endregion
 
@@ -274,6 +298,11 @@ void sendData(){
     data += String(time) + ", ";
   }
 
+  // Checks if data length exceeds the max limit
+  if (data.length() >= RH_RF95_MAX_MESSAGE_LEN){
+    data = data.substring(0, RH_RF95_MAX_MESSAGE_LEN - 1); // Trims data to fit
+  }
+
   // Converts the string data into a char list
   char send_buffer[RH_RF95_MAX_MESSAGE_LEN];
   data.toCharArray(send_buffer, RH_RF95_MAX_MESSAGE_LEN);
@@ -296,7 +325,7 @@ void handleNoResponse(){
   // SURFACED - If the Bottom Switch is PRESSED & the TOP Switch is NOT PRESSED, then it must be SURFACED
   // FLOORED - If the Bottom Switch is NOT PRESSED & the TOP Switch is PRESSED, then it must be FLOORED
   // SUBMURSED - If the Bottom Switch is NOT PRESSED & the NOT TOP Switch is PRESSED, then it must be SUBMURSED
-enum Float_State psiCompare(float half_time_psi, float full_time_psi, float curr_depth, 
+Float_State psiCompare(float half_time_psi, float full_time_psi, float curr_depth, 
     enum Switch_State switch_bottom_state, enum Switch_State switch_top_state, bool ez_switch_bottom, bool ez_switch_top){
   float calc_psi_diff = abs(full_time_psi - half_time_psi);
 
@@ -376,11 +405,7 @@ void maintainDepth(unsigned long current_millis){
     float_curr_state = MOVING;
   } else{
     // If not it'll stay at a no movement state
-    digitalWrite(outA, LOW);
-    digitalWrite(outB, LOW);
-    digitalWrite(LED_BUILTIN, LOW);
-    pinMode(12, INPUT_PULLUP);
-    pinMode(A3, INPUT_PULLUP);
+    float_curr_state = MAINTAIN;
   }
 }
 
@@ -390,13 +415,13 @@ void maintainDepth(unsigned long current_millis){
 void switchBottomDetect(){
   if (digitalRead(A3) == HIGH){
     switch_bottom_state = ACTIVE;
-    switch_top_stateh = INACTIVE;
+    switch_top_state = INACTIVE;
   }
 }
 
 void switchTopDetect(){
   if (digitalRead(12) == HIGH){
-    switch_top_stateh = ACTIVE;
+    switch_top_state = ACTIVE;
     switch_bottom_state = INACTIVE;
   }
 }
