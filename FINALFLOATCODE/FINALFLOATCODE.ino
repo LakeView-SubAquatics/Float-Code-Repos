@@ -34,6 +34,10 @@ List<float> psiList;
 List<float> depthList;
 List<unsigned long> timeList;
 
+// Define Company Name/Number as per competition requirement
+
+const String COMPANY_NAME = "LakeView SubAquatics-8";
+
 // Max List Size
 const int MAX_LIST_SIZE = 2000;
 
@@ -282,8 +286,10 @@ void loop() {
 // Data Sending function to communicated radio
 void sendData(){
   // Inntialy defines the data
-  String data = "PSI: ";
+  String data = COMPANY_NAME + ": ";
+  
   // Adds each data from the psi list
+  data += "PSI: ";
   for (int i = 0; i < psiList.getSize(); i++){
     data +=  String(psiList.get(i)) + ", ";
   }
