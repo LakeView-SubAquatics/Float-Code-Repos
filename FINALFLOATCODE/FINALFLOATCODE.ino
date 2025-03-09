@@ -2,7 +2,7 @@
   Author(s): Tyerone Chen, Danny Henningfield, Adam Palma, 
 
     Innit Create: 6/30/2024
-      Last update: 3/1/2025
+      Last update: 3/9/2025
 */
 
 //// Arduino Float Code Remake
@@ -127,7 +127,7 @@ void setup() {
   pinMode(A3, INPUT_PULLUP);
 
   // Set init state for float state
-  float_curr_state = psiCompare(psi_half_sec, psi_full_sec, 0.0, switch_bottom_state, switch_top_state, false, false);
+  float_curr_state = psiCompare(psi_half_sec, psi_full_sec, 0.0, switch_bottom_state, switch_top_state, switch_bottom.isPressed(), switch_top.isPressed());
 
   // Feather LoRa TX Tester
   digitalWrite(RFM95_RST, LOW);
@@ -229,7 +229,7 @@ void loop() {
       list_updater_millis = current_millis;
       // Checks list size
       // Clears out any old data
-      if (psiList.size() >= MAX_LIST_SIZE){
+      if (psiList.getSize() >= MAX_LIST_SIZE){
         psiList.remove(0);
         depthList.remove(0);
         timeList.remove(0);
@@ -255,7 +255,7 @@ void loop() {
     if (current_millis - psi_change_check_millis >= PSI_CHANGE_CHECK_INTERVAL){
       psi_change_check_millis = current_millis;
 
-      float_curr_state = psiCompare(psi_half_sec, psi_full_sec, switch_bottom_state, switch_top_state);
+      float_curr_state = psiCompare(psi_half_sec, psi_full_sec, depth, switch_bottom_state, switch_top_state, ez_switch_bottom, ez_switch_top);
     }
     #pragma endregion
 
@@ -284,18 +284,18 @@ void sendData(){
   // Inntialy defines the data
   String data = "PSI: ";
   // Adds each data from the psi list
-  for (float psi : psiList){
-    data +=  String(psi) + ", ";
+  for (int i = 0; i < psiList.getSize(); i++){
+    data +=  String(psiList.get(i)) + ", ";
   }
   // Adds each data from the depth list
   data += "DEPTH: ";
-  for (float depth : depthList){
-    data +=  String(depth) + ", ";
+  for (int i = 0; i < depthList.getSize(); i++){
+    data +=  String(depthList.get(i)) + ", ";
   }
   // adds each data from the timeList
   data += "TIME: ";
-  for (unsigned long time : timeList){
-    data += String(time) + ", ";
+  for (int i = 0; i < timeList.getSize(); i++){
+    data += String(timeList.get(i)) + ", ";
   }
 
   // Checks if data length exceeds the max limit
@@ -315,7 +315,7 @@ void sendData(){
 
 // Handles any issues when there is no response from the radio
 void handleNoResponse(){
-  float_curr_state = STALLED; // Defaults float to stall
+  float_curr_state = MOVING; // Defaults float to moving
   strncpy(received_data, "", sizeof(received_data)); // Clears out recieved_data
 }
 
@@ -326,7 +326,7 @@ void handleNoResponse(){
   // FLOORED - If the Bottom Switch is NOT PRESSED & the TOP Switch is PRESSED, then it must be FLOORED
   // SUBMURSED - If the Bottom Switch is NOT PRESSED & the NOT TOP Switch is PRESSED, then it must be SUBMURSED
 Float_State psiCompare(float half_time_psi, float full_time_psi, float curr_depth, 
-    enum Switch_State switch_bottom_state, enum Switch_State switch_top_state, bool ez_switch_bottom, bool ez_switch_top){
+    Switch_State switch_bottom_state, Switch_State switch_top_state, bool ez_switch_bottom, bool ez_switch_top){
   float calc_psi_diff = abs(full_time_psi - half_time_psi);
 
   if (calc_psi_diff <= 1.0){
@@ -351,7 +351,7 @@ Float_State psiCompare(float half_time_psi, float full_time_psi, float curr_dept
 //// Main Bulk of the Code
 
 // Motor Diurefction determiner, based on float state
-void motorDirection(enum State float_state){
+void motorDirection(Float_State float_state){
   switch (float_state){
   case SURFACED: // Counter-Clockwise Motor Movemenet, Sucks in water
     digitalWrite(outA, LOW);
