@@ -1,20 +1,14 @@
 /* 
-  Author(s): Tyerone Chen, Danny Henningfield, Adam Palma, 
-
-    Innit Create: 6/30/2024
-      Last update: 3/9/2025
+  Author(s): Tyerone Chen, Danny Henningfield, Adam Palma
+  Innit Create: 6/30/2024
+  Last update: 3/27/2025
 */
 
-//// Arduino Float Code Remake
+#include <SPI.h>
+#include <RH_RF95.h>
+#include <ezButton.h>
+#include <List.hpp>
 
-// Included Library
-#include <SPI.h> // Used for synchronization of communication between different boards
-#include <RH_RF95.h> // Used for the radio and specific adafruit board used
-#include <ezButton.h> // Used for the much better button/switch detection
-#include <List.hpp> // Used for the simpler functionality to make lists, instead of having to manually redefine arrays.
-
-// Innitial Definitions
-  // Radio Communications Setup
 #if defined(ADAFRUIT_FEATHER_M0) || defined(ADAFRUIT_FEATHER_M0_EXPRESS) || defined(ARDUINO_SAMD_FEATHER_M0)
 #define RFM95_CS    8
 #define RFM95_INT   3
@@ -25,135 +19,82 @@
 RH_RF95 rf95(RFM95_CS, RFM95_INT);
 
 #pragma region Variable_Definement
-
-// List Definition
-  // psiList - float - Contains the data colelceted of the psi
-  // depthList - float - Contains the data coillected of the depth
-  // timeList - int - Contains a rough time that is parralel to the previous lists
 List<float> psiList;
 List<float> depthList;
 List<unsigned long> timeList;
 
-// Define Company Name/Number as per competition requirement
-
+float depth = 0;
 const String COMPANY_NAME = "LakeView SubAquatics-8";
-
-// Max List Size
 const int MAX_LIST_SIZE = 2000;
-
-// Recievement Data Innitializer
 char received_data[RH_RF95_MAX_MESSAGE_LEN];
-
-// PSI Calculation Variables
 float psi_half_sec = 0;
 float psi_full_sec = 0;
-float psi_calc = 0;
 
-// Arduino & Motor Port Connection Variables Definition
-int outA = 5;
-int diag_port_A = 6;
-int outB = 11;
-int diag_port_B = 10;
-
-int pwm_port = 9;
+const int OUT_A = 5;
+const int DIAG_PORT_A = 6;
+const int OUT_B = 11;
+const int DIAG_PORT_B = 10;
+const int PWM_PORT = 9;
 const int DUTY_CYCLE = 255;
 
-ezButton switch_top(12);   // Top Swtch Connected to pin 12
-ezButton switch_bottom(A3);// Bottom Switch connected to pin A3
+ezButton switch_top(12);
+ezButton switch_bottom(A3);
 
-// Enum for Float States
-  // SURFACED - The Float is currently surfaced at the top of the water
-  // SUBMURSED - The FLoat is currently under the water, but presumed to be not moving. Mostly used as a placeholder in case of a unforseen error.
-  // MOVING - The Float is currently moving, presumed as under water.
-  // MAINTAIN - The FLoat is maintaing a desired depth, currently not moving
-  // FLOORED -  The FLoat is at the bottom of the pool, currently not moving
-enum Float_State {
-  SURFACED,
-  SUBMURSED,
-  MOVING,
-  MAINTAIN,
-  FLOORED
-};
-
-// When the Code is Innitiated, the Float should be surfaced
+enum Float_State { SURFACED, SUBMURSED, MOVING, MAINTAIN, FLOORED };
 volatile Float_State float_curr_state = SURFACED;
 
-// Enum for Switch States
-  //  ACTIVE - Switch is being activated/pressed
-  // INACTIVE - Switch is NOT being activated/pressed
-enum Switch_State{
-  ACTIVE,
-  INACTIVE
-};
-
-// Neither Switch Should be Activated when the code starts
+enum Switch_State { ACTIVE, INACTIVE };
+float const MAX_MAINTAIN_DEPTH = 2.6;
+float const MIN_MAINTAIN_DEPTH = 2.4;
 volatile Switch_State switch_top_state = INACTIVE;
 volatile Switch_State switch_bottom_state = INACTIVE;
 
-// Enum for Motor Direction
-  // CLOCKWISE - Motor is moving downwards, towards the bottom switch
-  // COUNTERCLOCKWISE - Motor is moving upwards, towards the top switch
-  // STALLED - Motor is not being moved
-enum Motor_Direction {
-  CLOCKWISE,
-  COUNTERCLOCKWISE,
-  STALLED
-};
+enum Motor_Direction { CLOCKWISE, COUNTERCLOCKWISE, STALLED };
 #pragma endregion
 
 #pragma region Setup
 void setup() {
-  // Defines what each pin should be setup to respond as
-  analogWrite(pwm_port, DUTY_CYCLE);
+  analogWrite(PWM_PORT, DUTY_CYCLE);
   pinMode(RFM95_RST, OUTPUT);
   digitalWrite(RFM95_RST, HIGH);
 
-  // Removes the Delay which the component would detect the Switch Having activity.
-  switch_top.setDebounceTime(50);   
-  switch_bottom.setDebounceTime(50); 
-    // Attach interrupt handler for top switch
+  switch_top.setDebounceTime(50);
+  switch_bottom.setDebounceTime(50);
   attachInterrupt(digitalPinToInterrupt(12), switchTopDetect, CHANGE);
   attachInterrupt(digitalPinToInterrupt(A3), switchBottomDetect, CHANGE);
 
-  // Initiates how each pin on the board should respond
-  pinMode(outA, OUTPUT);
-  pinMode(outB, OUTPUT);
-  pinMode(diag_port_A, INPUT_PULLUP);
-  pinMode(diag_port_B, INPUT_PULLUP);
-  pinMode(pwm_port, OUTPUT);
+  pinMode(OUT_A, OUTPUT);
+  pinMode(OUT_B, OUTPUT);
+  pinMode(DIAG_PORT_A, INPUT_PULLUP);
+  pinMode(DIAG_PORT_B, INPUT_PULLUP);
+  pinMode(PWM_PORT, OUTPUT);
   pinMode(LED_BUILTIN, OUTPUT);
-  // Enables the Diag Ports
-  digitalWrite(diag_port_A, HIGH);
-  digitalWrite(diag_port_B, HIGH);
+  digitalWrite(DIAG_PORT_A, HIGH);
+  digitalWrite(DIAG_PORT_B, HIGH);
 
-  // Resistor setting for the Limit Swtches
   pinMode(12, INPUT_PULLUP);
   pinMode(A3, INPUT_PULLUP);
 
-  // Set init state for float state
-  float_curr_state = psiCompare(psi_half_sec, psi_full_sec, 0.0, switch_bottom_state, switch_top_state, switch_bottom.isPressed(), switch_top.isPressed());
+  int pressure_pin = analogRead(A1);
+  float psi = (0.0374 * pressure_pin) - 3.3308;
+  float pascal_pi = (psi - 14.7) * 6894.76;
+  depth = (pascal_pi / (1000 * 9.81));
+  float_curr_state = psiCompare(psi_half_sec, psi_full_sec, depth, switch_bottom_state, switch_top_state, switch_bottom.isPressed(), switch_top.isPressed());
 
-  // Feather LoRa TX Tester
   digitalWrite(RFM95_RST, LOW);
   digitalWrite(RFM95_RST, HIGH);
 
-  // Radio response handleres
   while (!rf95.init()) {
-    handleNoResponse(); // No Responce Handler
+    handleNoResponse();
   }
   if (!rf95.setFrequency(RF95_FREQ)) {
-    handleNoResponse(); // No Responce Handler
+    handleNoResponse();
   }
-  //Sets Freq to: RF95_FREQ
   rf95.setTxPower(23, false);
 }
 #pragma endregion
 
-//Innitializes and defines the packet size
 int16_t packetnum = 0;
-
-// "Multithreading Section
-// Millis Timer Variables
 unsigned long radio_task_millis = 0;
 unsigned long psi_task_half_millis = 0;
 unsigned long psi_task_full_millis = 0;
@@ -161,117 +102,79 @@ unsigned long psi_change_check_millis = 0;
 unsigned long list_updater_millis = 0;
 unsigned long maintain_depth_millis = 0;
 
-// Task Interval Definements
-const long RADIO_TASK_INTERVAL = 1001; // About 1 second
-const long PSI_TASK_HALF_INTERVAL = 1001; // About 1 second
-const long PSI_TASK_FULL_INTERVAL = 1250; // About 1.25 seconds
-const long PSI_CHANGE_CHECK_INTERVAL = 500; // 1/2 a second
-const long LIST_UPDATER_INTERVAL = 5000; // 5 Seconds
-const long MAINTAIN_DEEPTH_DURATION = 60000; // 1 minute 
-
+const long RADIO_TASK_INTERVAL = 1001;
+const long PSI_TASK_HALF_INTERVAL = 1001;
+const long PSI_TASK_FULL_INTERVAL = 1250;
+const long PSI_CHANGE_CHECK_INTERVAL = 500;
+const long LIST_UPDATER_INTERVAL = 5000;
+const long MAINTAIN_DEEPTH_DURATION = 60000;
 
 #pragma region Main_Program/Loop
 void loop() {
-  // Millis Timer Start
   unsigned long current_millis = millis();
 
-  /// Pressure Based CaLCULATION
-    // makes sure that the pressure pin is set to A1
   int pressure_pin = analogRead(A1);
   float psi = (0.0374 * pressure_pin) - 3.3308;
-  float pascal_pi = psi * 6894.76;
-  float depth = (pascal_pi / (1000 * 9.81) ); // Caqlculated in Meters
+  float pascal_pi = (psi - 14.7) * 6894.76;
+  depth = (pascal_pi / (1000 * 9.81));
 
-  // EzButton Setup 
-  // Used for as a alternative switch detection
   switch_top.loop();
   switch_bottom.loop();
-
   bool ez_switch_top = switch_top.isPressed();
   bool ez_switch_bottom = switch_bottom.isPressed();
 
-#pragma region Radio_Communications 
-  // Radio Communication Checker
-  if (current_millis - radio_task_millis >= RADIO_TASK_INTERVAL){
+  if (current_millis - radio_task_millis >= RADIO_TASK_INTERVAL) {
     radio_task_millis = current_millis;
-
     if (rf95.waitAvailableTimeout(1000)) {
       uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
       uint8_t len = sizeof(buf);
-
       if (rf95.recv(buf, &len)) {
-        // Store the received data in the global variable
         strncpy(received_data, (char*)buf, len);
-      } 
-      else {
-        handleNoResponse(); // No Responce Handler
+      } else {
+        handleNoResponse();
       }
-    } 
-    else {
-      handleNoResponse(); // No Responce Handler
+    } else {
+      handleNoResponse();
     }
   }
-  // End of Radio Communication Checker
-#pragma endregion
 
-  // Code which actualy starts/functions after passing the radio communcation check
   if (strcmp(received_data, "initiate") == 0) {
-
-    // Reminder Top Switch is 12, and Bottom Switch is A3
-    // Float State determined based on the psi change and what switches are and aren't bneing pressed
     float_curr_state = psiCompare(psi_half_sec, psi_full_sec, depth, switch_bottom_state, switch_top_state, ez_switch_bottom, ez_switch_top);
-    // Motor Direction Determined after the Float State is Determined
-    motorDirection(float_curr_state);
-    if (float_curr_state == MAINTAIN){ 
-      maintainDepth(current_millis);
+    motorDirection(float_curr_state, depth);
+    if (float_curr_state == MAINTAIN) {
+      maintainDepth(current_millis, depth);
     }
 
-
-    #pragma region PSI Data Code
-    // List Data Adder
-    if (current_millis - list_updater_millis >= LIST_UPDATER_INTERVAL){
+    if (current_millis - list_updater_millis >= LIST_UPDATER_INTERVAL) {
       list_updater_millis = current_millis;
-      // Checks list size
-      // Clears out any old data
-      if (psiList.getSize() >= MAX_LIST_SIZE){
+      if (psiList.getSize() >= MAX_LIST_SIZE) {
         psiList.remove(0);
         depthList.remove(0);
         timeList.remove(0);
       }
-      
-      // Adds data onto the list
       psiList.add(psi);
       depthList.add(depth);
       timeList.add(current_millis);
     }
-    /// Half Sec PSI
-    if (current_millis - psi_task_half_millis >= PSI_TASK_HALF_INTERVAL){
-      psi_task_full_millis = current_millis;
+    if (current_millis - psi_task_half_millis >= PSI_TASK_HALF_INTERVAL) {
+      psi_task_half_millis = current_millis;
       psi_half_sec = psi;
     }
-    /// Full Sec PSI
-    if (current_millis - psi_task_full_millis >= PSI_TASK_FULL_INTERVAL){
+    if (current_millis - psi_task_full_millis >= PSI_TASK_FULL_INTERVAL) {
       psi_task_full_millis = current_millis;
       psi_full_sec = psi;
     }
-    /// Detrminer to decide whether or not the float is floored or surfaced
-    /// Based on if there is a significant change in pressure
-    if (current_millis - psi_change_check_millis >= PSI_CHANGE_CHECK_INTERVAL){
+    if (current_millis - psi_change_check_millis >= PSI_CHANGE_CHECK_INTERVAL) {
       psi_change_check_millis = current_millis;
-
       float_curr_state = psiCompare(psi_half_sec, psi_full_sec, depth, switch_bottom_state, switch_top_state, ez_switch_bottom, ez_switch_top);
     }
-    #pragma endregion
 
-    if (float_curr_state == SURFACED){
+    if (float_curr_state == SURFACED) {
       sendData();
     }
-  }
-  
-  if (strcmp(received_data, "initiate") != 0){
-    // Stalls the Motor
-    digitalWrite(outA, LOW);
-    digitalWrite(outB, LOW);
+  } else {
+    digitalWrite(OUT_A, LOW);
+    digitalWrite(OUT_B, LOW);
     pinMode(12, INPUT_PULLUP);
     pinMode(A3, INPUT_PULLUP);
     digitalWrite(LED_BUILTIN, LOW);
@@ -279,157 +182,133 @@ void loop() {
 }
 #pragma endregion
 
-
-// Functions
 #pragma region Functions
-
-// Data Sending function to communicated radio
-void sendData(){
-  // Inntialy defines the data
+void sendData() {
   String data = COMPANY_NAME + ": ";
-  
-  // Adds each data from the psi list
   data += "PSI: ";
-  for (int i = 0; i < psiList.getSize(); i++){
-    data +=  String(psiList.get(i)) + ", ";
+  for (int i = 0; i < psiList.getSize(); i++) {
+    data += String(psiList.get(i)) + ", ";
   }
-  // Adds each data from the depth list
   data += "DEPTH: ";
-  for (int i = 0; i < depthList.getSize(); i++){
-    data +=  String(depthList.get(i)) + ", ";
+  for (int i = 0; i < depthList.getSize(); i++) {
+    data += String(depthList.get(i)) + ", ";
   }
-  // adds each data from the timeList
   data += "TIME: ";
-  for (int i = 0; i < timeList.getSize(); i++){
+  for (int i = 0; i < timeList.getSize(); i++) {
     data += String(timeList.get(i)) + ", ";
   }
 
-  // Checks if data length exceeds the max limit
-  if (data.length() >= RH_RF95_MAX_MESSAGE_LEN){
-    data = data.substring(0, RH_RF95_MAX_MESSAGE_LEN - 1); // Trims data to fit
+  if (data.length() >= RH_RF95_MAX_MESSAGE_LEN) {
+    data = data.substring(0, RH_RF95_MAX_MESSAGE_LEN - 1);
   }
 
-  // Converts the string data into a char list
   char send_buffer[RH_RF95_MAX_MESSAGE_LEN];
   data.toCharArray(send_buffer, RH_RF95_MAX_MESSAGE_LEN);
-
-  // Sends sed list
   rf95.send((uint8_t *)send_buffer, strlen(send_buffer));
   rf95.waitPacketSent();
 }
 
-
-// Handles any issues when there is no response from the radio
-void handleNoResponse(){
-  float_curr_state = MOVING; // Defaults float to moving
-  strncpy(received_data, "", sizeof(received_data)); // Clears out recieved_data
+void handleNoResponse() {
+  float_curr_state = MOVING;
+  strncpy(received_data, "", sizeof(received_data));
 }
 
-
-// Calculates the change in PSI. If it is < 1, then it detects there is MINIMAL change in PSI, meaning that the Float is in one of 3 states
-  // MAINTAIN - IF the current Depth is between 2.5m - 2.6m, the State must be MAINTAIN
-  // SURFACED - If the Bottom Switch is PRESSED & the TOP Switch is NOT PRESSED, then it must be SURFACED
-  // FLOORED - If the Bottom Switch is NOT PRESSED & the TOP Switch is PRESSED, then it must be FLOORED
-  // SUBMURSED - If the Bottom Switch is NOT PRESSED & the NOT TOP Switch is PRESSED, then it must be SUBMURSED
 Float_State psiCompare(float half_time_psi, float full_time_psi, float curr_depth, 
-    Switch_State switch_bottom_state, Switch_State switch_top_state, bool ez_switch_bottom, bool ez_switch_top){
+    Switch_State switch_bottom_state, Switch_State switch_top_state, bool ez_switch_bottom, bool ez_switch_top) {
   float calc_psi_diff = abs(full_time_psi - half_time_psi);
 
-  if (calc_psi_diff <= 1.0){
-    if(curr_depth < 2.6 && curr_depth > 2.5){
+  if (calc_psi_diff <= 1.0) {
+    if (curr_depth <= MAX_MAINTAIN_DEPTH && curr_depth >= MIN_MAINTAIN_DEPTH) {
       return MAINTAIN;
-    } else if ((switch_bottom_state == ACTIVE && switch_top_state == INACTIVE) || (ez_switch_bottom == true && ez_switch_top == false)){
+    } else if ((switch_bottom_state == ACTIVE && switch_top_state == INACTIVE) || (ez_switch_bottom == true && ez_switch_top == false)) {
       return SURFACED;
-    } else if((switch_bottom_state == INACTIVE && switch_top_state == ACTIVE) || (ez_switch_bottom == false && ez_switch_top == true)){
+    } else if ((switch_bottom_state == INACTIVE && switch_top_state == ACTIVE) || (ez_switch_bottom == false && ez_switch_top == true)) {
       return FLOORED;
-    } else if((switch_bottom_state == INACTIVE && switch_top_state == INACTIVE) || (ez_switch_bottom == false && ez_switch_top == false)){
+    } else if ((switch_bottom_state == INACTIVE && switch_top_state == INACTIVE) || (ez_switch_bottom == false && ez_switch_top == false)) {
       return SUBMURSED;
-    } else{
-    return MOVING;
     }
   }
-  else{
-    return MAINTAIN;
-  }
+  return MOVING;
 }
 
-
-//// Main Bulk of the Code
-
-// Motor Diurefction determiner, based on float state
-void motorDirection(Float_State float_state){
-  switch (float_state){
-  case SURFACED: // Counter-Clockwise Motor Movemenet, Sucks in water
-    digitalWrite(outA, LOW);
-    digitalWrite(outB, HIGH);
-    digitalWrite(LED_BUILTIN, LOW);
-    break;
-  
-  case SUBMURSED: // Clockwise Motor Movemenet, Pushes out water
-  // Add code where it'll stay at a certain depth for a certain amount of time before resuming movement
-    digitalWrite(outA, HIGH);
-    digitalWrite(outB, LOW);
-    digitalWrite(LED_BUILTIN, HIGH);
-    break;
-  
-   case FLOORED: // Clockwise Motor Movemenet, Pushes out water
-    digitalWrite(outA, HIGH);
-    digitalWrite(outB, LOW);
-    digitalWrite(LED_BUILTIN, HIGH);
-    break;
-
-   case MOVING:
-    digitalWrite(outA, LOW);
-    digitalWrite(outB, LOW);
-    digitalWrite(LED_BUILTIN, LOW);
-    break;
-  
-   case MAINTAIN:
-   // Default to stall
-    digitalWrite(outA, LOW);
-    digitalWrite(outB, LOW);
-    digitalWrite(LED_BUILTIN, LOW);
-    maintain_depth_millis = millis(); // Starts a Timer
-    break;
-
-  default: // defaults to have the motor to be stalled
-    digitalWrite(outA, LOW);
-    digitalWrite(outB, LOW);
-    digitalWrite(LED_BUILTIN, LOW);
-    break;
+void motorDirection(Float_State float_state, float curr_depth) {
+  switch (float_state) {
+    case SURFACED:
+      digitalWrite(OUT_A, LOW);
+      digitalWrite(OUT_B, HIGH);
+      digitalWrite(LED_BUILTIN, LOW);
+      break;
+    case SUBMURSED:
+      digitalWrite(OUT_A, LOW);
+      digitalWrite(OUT_B, LOW);
+      digitalWrite(LED_BUILTIN, HIGH);
+      break;
+    case FLOORED:
+      digitalWrite(OUT_A, HIGH);
+      digitalWrite(OUT_B, LOW);
+      digitalWrite(LED_BUILTIN, HIGH);
+      break;
+    case MOVING:
+      if (curr_depth < 2.5) {
+        digitalWrite(OUT_A, HIGH);
+        digitalWrite(OUT_B, LOW);
+      } else {
+        digitalWrite(OUT_A, LOW);
+        digitalWrite(OUT_B, HIGH);
+      }
+      digitalWrite(LED_BUILTIN, LOW);
+      break;
+    case MAINTAIN:
+      digitalWrite(OUT_A, LOW);
+      digitalWrite(OUT_B, LOW);
+      digitalWrite(LED_BUILTIN, LOW);
+      maintain_depth_millis = millis();
+      break;
+    default:
+      digitalWrite(OUT_A, LOW);
+      digitalWrite(OUT_B, LOW);
+      digitalWrite(LED_BUILTIN, LOW);
+      break;
   }
-   // Ensures switch will always have a resistor setup regardless of state
-   pinMode(12, INPUT_PULLUP);
-   pinMode(A3, INPUT_PULLUP);
+  pinMode(12, INPUT_PULLUP);
+  pinMode(A3, INPUT_PULLUP);
 }
 
+void maintainDepth(unsigned long current_millis, float curr_depth) {
+  static unsigned long maintain_start_time = 0;
 
-// Depth Maintainer
-void maintainDepth(unsigned long current_millis){
-  // Once the time reaches 1 minute, resumes to moving satate
-  if (current_millis - maintain_depth_millis >= MAINTAIN_DEEPTH_DURATION){
+  if (float_curr_state == MAINTAIN && maintain_start_time == 0) {
+    maintain_start_time = current_millis;
+  }
+
+  if (current_millis - maintain_start_time >= MAINTAIN_DEEPTH_DURATION) {
     float_curr_state = MOVING;
-  } else{
-    // If not it'll stay at a no movement state
-    float_curr_state = MAINTAIN;
+    maintain_start_time = 0;
+  } else if (curr_depth < MIN_MAINTAIN_DEPTH) {
+    digitalWrite(OUT_A, HIGH);
+    digitalWrite(OUT_B, LOW);
+  } else if (curr_depth > MAX_MAINTAIN_DEPTH) {
+    digitalWrite(OUT_A, LOW);
+    digitalWrite(OUT_B, HIGH);
+  } else {
+    digitalWrite(OUT_A, LOW);
+    digitalWrite(OUT_B, LOW);
   }
+  pinMode(12, INPUT_PULLUP);
+  pinMode(A3, INPUT_PULLUP);
 }
 
-
-// Switch Detections
-// if one of the switches is detected, it'll immediatly set the other as inactive
-void switchBottomDetect(){
-  if (digitalRead(A3) == HIGH){
+void switchBottomDetect() {
+  if (digitalRead(A3) == HIGH) {
     switch_bottom_state = ACTIVE;
     switch_top_state = INACTIVE;
   }
 }
 
-void switchTopDetect(){
-  if (digitalRead(12) == HIGH){
+void switchTopDetect() {
+  if (digitalRead(12) == HIGH) {
     switch_top_state = ACTIVE;
     switch_bottom_state = INACTIVE;
   }
 }
-
 #pragma endregion
