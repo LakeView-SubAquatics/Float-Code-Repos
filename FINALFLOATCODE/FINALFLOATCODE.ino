@@ -183,6 +183,12 @@ void loop() {
   }
 
   if (send_float){
+    float_curr_state = psiCompare(psi_half_sec, psi_full_sec, depth, switch_bottom_state, switch_top_state, ez_switch_bottom, ez_switch_top);
+    motorDirection(float_curr_state, depth, psi_hald_sec - psi_full_sec);
+    
+    if (float_curr_state == MAINTAIN) {
+      maintainDepth(current_millis, depth);
+    }
     // Gets data for current psi at 1/2 a second    
     if (current_millis - psi_task_half_millis >= PSI_TASK_HALF_INTERVAL) {
       psi_task_half_millis = current_millis;
