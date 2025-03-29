@@ -57,9 +57,9 @@ unsigned long list_updater_millis = 0;
 
 // Intervals
 const long RADIO_TASK_INTERVAL = 1000; // About 1 Second
-const long PSI_TASK_HALF_INTERVAL = 500; // About 1/2 Second
+const long PSI_TASK_HALF_INTERVAL = 1001; // About 1/2 Second
 const long PSI_TASK_FULL_INTERVAL = 1250; // 1.25 Seconds
-const long PSI_CHANGE_CHECK_INTERVAL = 1000; // 1 a second
+const long PSI_CHANGE_CHECK_INTERVAL = 500; // 1 a second
 const long LIST_UPDATER_INTERVAL = 5000; // 5 Seconds
 //const long MAINTAIN_DEEPTH_DURATION = 60000; // 1 Minute
 
