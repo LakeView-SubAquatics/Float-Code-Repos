@@ -25,6 +25,13 @@ const int bottomSwitchPin = A3;
 ezButton topSwitch(topSwitchPin);
 ezButton bottomSwitch(bottomSwitchPin);
 
+// Float Motor Setup
+bool setup_motor = false;
+
+// Hold Motor Timer
+unsigned long motor_hold_timer = 0;
+const long MOTOR_HOLD_INTERVAL = 20000
+
 // Enum for motor direction
 enum Motor_Direction {
   CLOCKWISE,
@@ -89,6 +96,7 @@ void setup() {
 int16_t packetnum = 0;  // packet counter, we increment per xmission
 
 void loop() {
+  unsigned long current_millis = millis();
   float radiopacket[10] = {3.33, 3.33, 3.33, 5.43, 1.97, 8.21, 0.21, 9.54, 7.43, 5.01};
   String arrayString = floatToString(radiopacket, 10, ',');
 
@@ -118,14 +126,25 @@ void loop() {
       // Read switch states
       bool topPressed = topSwitch.isPressed();
       bool bottomPressed = bottomSwitch.isPressed();
+
+      while (!setup_motor){
+        if (!bottomPressed){
+          motor_direction = CLOCKWISE;
+        } else if(bottomPressed){
+          setup_motor = true;
+          motor_direction = STALLED;
+        }
+      }
     
       // Change motor direction only when a button is pressed
       if (topPressed && bottomPressed) {
         motor_direction = STALLED; // Stop motor if both are pressed
-      } else if (topPressed) {
+      } else if (topPressed && current_millis - motor_hold_timer >= MOTOR_HOLD_INTERVAL) {
         motor_direction = CLOCKWISE;
+        motor_hold_timer = current_millis;
       } else if (bottomPressed) {
         motor_direction = COUNTERCLOCKWISE;
+        motor_hold_timer = current_millis;
       }
     
       // Control motor direction
