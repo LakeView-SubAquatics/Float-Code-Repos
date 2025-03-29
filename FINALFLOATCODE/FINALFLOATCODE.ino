@@ -1,7 +1,7 @@
 /* 
   Author(s): Tyerone Chen, Danny Henningfield, Adam Palma
   Innit Create: 6/30/2024
-  Last update: 3/28/2025
+  Last update: 3/29/2025
 */
 
 #include <SPI.h>
@@ -234,6 +234,8 @@ void loop() {
         if (rf95.recv(buf, &len)) {
           strncpy(received_data, (char*)buf, len);
           sendData();
+          has_maintained = false;
+          maintain_updates = 0;
         } else {
           handleNoResponse();
         }
@@ -349,7 +351,7 @@ void maintainDepth(int total_maintain_updates, float curr_depth) {
     }
   } else {
     has_maintained = true;
-    float_curr_state = MOVING;
+    float_curr_state = FLOORED;
   }
   pinMode(12, INPUT_PULLUP);
   pinMode(A3, INPUT_PULLUP);
