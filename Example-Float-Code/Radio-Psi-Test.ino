@@ -23,9 +23,7 @@ void setup() {
   digitalWrite(RFM95_RST, HIGH);
 
   digitalWrite(RFM95_RST, LOW);
-  delay(10);
   digitalWrite(RFM95_RST, HIGH);
-  delay(10);
 
   while (!rf95.init()) {
     while (1); // hang forever if radio doesn't init
