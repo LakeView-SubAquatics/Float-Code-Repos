@@ -76,7 +76,7 @@ void loop() {
 
   // Read switch states
   bool top_pressed = top_switch.isPressed();
-  bool bottom_pressed = bottom_switch
+  bool bottom_pressed = bottom_switch.isPressed();
 
   // Get current time for timing logic
   unsigned long current_time = millis();
