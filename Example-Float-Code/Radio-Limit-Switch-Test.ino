@@ -121,7 +121,6 @@ void loop() {
       motor_state = MOVING_DOWN;
       motor_direction = CLOCKWISE;
     }
-    controlMotor();
     return; // wait for switch before listening for commands
   }
 
@@ -177,9 +176,7 @@ void loop() {
           motor_direction = CLOCKWISE;
         }
         break;
-      controlMotor();
     }
-    controlMotor();
   }
   controlMotor();
 }
