@@ -224,6 +224,7 @@ void loop() {
       }
     }
 
+    // Might want to force the motor to stall and then reanble it afterwords, will do later its 12:39 am
     if (float_curr_state == SURFACED) {
       if (rf95.waitAvailableTimeout(1000)) {
         uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
