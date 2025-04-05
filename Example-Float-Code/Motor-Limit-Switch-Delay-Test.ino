@@ -84,7 +84,7 @@ void loop() {
   // State machine for motor operation
   switch (motor_state) {
     case IDLE:
-      // If bottom switch is not pressed, start moving down
+      // if bottom switch is not pressed, start moving down
       if (!bottomPressed) {
         motor_state = MOVING_DOWN;
         motor_direction = CLOCKWISE;
@@ -92,7 +92,7 @@ void loop() {
       break;
 
     case MOVING_DOWN:
-      // Stop when the bottom switch is pressed
+      // stop when the bottom switch is pressed
       if (bottomPressed) {
         motor_state = WAITING_BOTTOM;
         motor_direction = STALLED;
@@ -101,7 +101,7 @@ void loop() {
       break;
 
     case WAITING_BOTTOM:
-      // Wait for 5 seconds before moving up
+      // wait 5 seconds before moving up
       if (current_time - state_timer >= WAIT_TIME) {
         motor_state = MOVING_UP;
         motor_direction = COUNTERCLOCKWISE;
@@ -109,7 +109,7 @@ void loop() {
       break;
 
     case MOVING_UP:
-      // Stop when the top switch is pressed
+      // stop when the top switch is pressed
       if (topPressed) {
         motor_state = WAITING_TOP;
         motor_direction = STALLED;
@@ -118,7 +118,7 @@ void loop() {
       break;
 
     case WAITING_TOP:
-      // Wait for 5 seconds before moving down
+      // wait 5 seconds before moving down
       if (current_time - state_timer >= WAIT_TIME) {
         motor_state = MOVING_DOWN;
         motor_direction = CLOCKWISE;
@@ -136,21 +136,21 @@ void controlMotor() {
       digitalWrite(LED_BUILTIN, LOW);
       digitalWrite(voltA, HIGH);
       digitalWrite(voltB, LOW);
-      analogWrite(pwm_port, duty_cycle); // Apply PWM
+      analogWrite(pwm_port, duty_cycle); 
       break;
 
     case COUNTERCLOCKWISE:
       digitalWrite(LED_BUILTIN, HIGH);
       digitalWrite(voltA, LOW);
       digitalWrite(voltB, HIGH);
-      analogWrite(pwm_port, duty_cycle); // Apply PWM
+      analogWrite(pwm_port, duty_cycle);
       break;
 
     case STALLED:
     default:
       digitalWrite(voltA, LOW);
       digitalWrite(voltB, LOW);
-      analogWrite(pwm_port, 0); // Stop motor
+      analogWrite(pwm_port, 0); 
       break;
   }
 }
