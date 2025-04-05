@@ -18,12 +18,12 @@ const int pwm_port = 9;
 const int duty_cycle = 255;
 
 // Define switch pins
-const int topSwitchPin = 12;
-const int bottomSwitchPin = A3;
+const int top_switch_pin = 12;
+const int bottom_switch_pin = A3;
 
 // Initialize switches with debounce
-ezButton topSwitch(topSwitchPin);
-ezButton bottomSwitch(bottomSwitchPin);
+ezButton top_switch(top_switch_pin);
+ezButton bottom_switch(bottom_switch_pin);
 
 // Timers for submerging and surfacing
 const unsigned long WAIT_TIME = 5000; // Wait for 5 secs
@@ -58,8 +58,8 @@ void setup() {
   digitalWrite(RFM95_RST, LOW);
   digitalWrite(RFM95_RST, HIGH);
 
-  topSwitch.setDebounceTime(50);
-  bottomSwitch.setDebounceTime(50);
+  top_switch.setDebounceTime(50);
+  bottom_switch.setDebounceTime(50);
 
   pinMode(voltA, OUTPUT);
   pinMode(voltB, OUTPUT);
@@ -67,12 +67,12 @@ void setup() {
 
   pinMode(LED_BUILTIN, OUTPUT);
 
-  pinMode(topSwitchPin, INPUT_PULLUP);
-  pinMode(bottomSwitchPin, INPUT_PULLUP);
+  pinMode(top_switch_pin, INPUT_PULLUP);
+  pinMode(bottom_switch_pin, INPUT_PULLUP);
 
-  bottomSwitch.loop(); 
+  bottom_switch.loop(); 
 
-  if (!bottomSwitch.isPressed()) {
+  if (!bottom_switch.isPressed()) {
     motor_state = MOVING_DOWN;
     motor_direction = CLOCKWISE;
   } else {
@@ -92,11 +92,11 @@ void setup() {
 }
 
 void loop() {
-  topSwitch.loop();
-  bottomSwitch.loop();
+  top_switch.loop();
+  bottom_switch.loop();
 
-  bool topPressed = topSwitch.isPressed();
-  bool bottomPressed = bottomSwitch.isPressed();
+  bool top_pressed = top_switch.isPressed();
+  bool bottom_pressed = bottom_switch.isPressed();
 
   unsigned long current_time = millis();
 
@@ -112,7 +112,7 @@ void loop() {
       switch (motor_state) {
         case IDLE:
           // if bottom switch is not pressed, start moving down
-          if (!bottomPressed) {
+          if (!bottom_pressed) {
             motor_state = MOVING_DOWN;
             motor_direction = CLOCKWISE;
           }
@@ -120,7 +120,7 @@ void loop() {
 
         case MOVING_DOWN:
           // stop when the bottom switch is pressed
-          if (bottomPressed) {
+          if (bottom_pressed) {
             motor_state = WAITING_BOTTOM;
             motor_direction = STALLED;
             state_timer = current_time;
@@ -137,7 +137,7 @@ void loop() {
 
         case MOVING_UP:
           // stop when the top switch is pressed
-          if (topPressed) {
+          if (top_pressed) {
             motor_state = WAITING_TOP;
             motor_direction = STALLED;
             state_timer = current_time;
