@@ -60,7 +60,7 @@ void loop() {
 String floatToString(List<float> &list, char seperator) {
   String result = "";
   for (int i = 0; i < list.getSize(); i++) {
-    result += String(list.get(i));
+    result = result + i + ": " + String(list.get(i));
     if (i < list.getSize() - 1) {
       result += seperator;
     }
