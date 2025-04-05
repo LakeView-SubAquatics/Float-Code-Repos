@@ -352,16 +352,13 @@ void moveMotor(Motor_Direction motor_direction){
 void maintainDepth(int total_maintain_updates, float curr_depth) {
   if (total_maintain_updates <= MAX_MAINTAINS) { // Check to see how many times the list has been updated while MAINTAINED
     if (curr_depth < MIN_MAINTAIN_DEPTH) { // Attempts to readjust float
-      digitalWrite(OUT_A, HIGH);
-      digitalWrite(OUT_B, LOW);
+      motor_direction = CLOCKWISE;
     } 
     else if (curr_depth > MAX_MAINTAIN_DEPTH) { // Attempts to readjust float
-      digitalWrite(OUT_A, LOW);
-      digitalWrite(OUT_B, HIGH);
+      motor_direction = COUNTERCLOCKWISE;
     } 
     else {
-      digitalWrite(OUT_A, LOW);
-      digitalWrite(OUT_B, LOW);
+      motor_direction = STALLED;
     }
   } 
   else {
