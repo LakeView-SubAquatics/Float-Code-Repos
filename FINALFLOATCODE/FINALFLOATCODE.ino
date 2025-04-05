@@ -1,7 +1,7 @@
 /* 
   Author(s): Tyerone Chen, Danny Henningfield, Adam Palma
-  Innit Create: 6/30/2024
-  Last update: 3/29/2025
+  Init Create: 6/30/2024
+  Last update: 4/4/2025
 */
 
 #include <SPI.h>
@@ -31,12 +31,14 @@ List<unsigned long> timeList;
 // List Variables Definement
 const int MAX_LIST_SIZE = 2000;
 const String COMPANY_NAME = "LakeView SubAquatics-#";
-float depth = 0;
-float psi_half_sec = 0;
-float psi_full_sec = 0;
+float psi_half_sec = 0.0;
+float psi_full_sec = 0.0;
+float psi_change = 0.0;
 bool has_maintained = false;
 int maintain_updates = 0;
 const int MAX_MAINTAINS = 12; // WIll be roughly 1 Minute of total time of maintaining depth
+const float MIN_MAINTAIN_DEPTH = 2.4;
+const float MAX_MAINTAIN_DEPTH = 2.6;
 
 // Port Definement
 const int OUT_A = 5;
@@ -67,34 +69,26 @@ const long LIST_UPDATER_INTERVAL = 5000; // 5 Seconds
 ezButton switch_top(12);
 ezButton switch_bottom(A3);
 
+bool send_float = false;
+
 // Float Movement
 enum Float_State { 
   SURFACED, 
-  SUBMURSED, 
-  MOVING, 
-  MAINTAIN, 
-  FLOORED 
+  MOVING_UP,
+  MOVING_DOWN, 
+  FLOORED,
+  MAINTAIN, // Hold Position
+  IDLE // Stall until further notice
 };
-
 volatile Float_State float_curr_state = SURFACED;
-
-float const MAX_MAINTAIN_DEPTH = 2.6;
-float const MIN_MAINTAIN_DEPTH = 2.4;
-bool send_float = false;
-
-enum Switch_State { 
-  ACTIVE, 
-  INACTIVE 
-};
-
-volatile Switch_State switch_top_state = INACTIVE;
-volatile Switch_State switch_bottom_state = INACTIVE;
 
 enum Motor_Direction { 
   CLOCKWISE, 
   COUNTERCLOCKWISE, 
   STALLED 
 };
+volatile Motor_Direction motor_direction = STALLED;
+
 #pragma endregion
 
 #pragma region Setup
@@ -116,20 +110,23 @@ void setup() {
   // Establish Button Port Settings
   switch_top.setDebounceTime(50);
   switch_bottom.setDebounceTime(50);
-  attachInterrupt(digitalPinToInterrupt(12), switchTopDetect, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(A3), switchBottomDetect, CHANGE);
 
   pinMode(12, INPUT_PULLUP);
   pinMode(A3, INPUT_PULLUP);
+  
+  // Get bottom switch state
+  switch_bottom.loop();
+  // Sets the motor to hit the bottom switch if it isn't already
+  if (!switch_bottom.isPressed()){
+    float_curr_state = MOVING_DOWN;
+    motor_direction = CLOCKWISE;
+  } 
+  else {
+    float_curr_state = IDLE;
+    motor_direction = STALLED;
+  }
 
-  // Pressure Based Calculations Setup
-  float pressure_pin = analogRead(A1);
-  float psi = (0.0374 * pressure_pin) - 3.3308;
-  float pascal_pi = (psi - 14.7) * 6894.76;
-  depth = (pascal_pi / (1002 * 9.81));
-  // Start up Initial Float State
-  float_curr_state = psiCompare(psi_half_sec, psi_full_sec, depth, switch_bottom_state, switch_top_state, switch_bottom.isPressed(), switch_top.isPressed());
-
+  // Setup radio pins
   digitalWrite(RFM95_RST, LOW);
   digitalWrite(RFM95_RST, HIGH);
 
@@ -153,14 +150,14 @@ void loop() {
   float pressure_pin = analogRead(A1);
   float psi = (0.0374 * pressure_pin) - 3.3308;
   float pascal_pi = (psi - 14.7) * 6894.76;
-  depth = (pascal_pi / (1002 * 9.81));
+  float depth = (pascal_pi / (1002 * 9.81));
   depth = depth < 0 ? 0 : depth;
 
   // Check Limit Switch/Button State
   switch_top.loop();
   switch_bottom.loop();
-  bool ez_switch_top = switch_top.isPressed();
-  bool ez_switch_bottom = switch_bottom.isPressed();
+  bool switch_top_state = switch_top.isPressed();
+  bool switch_bottom_state = switch_bottom.isPressed();
 
   // Check to See that Radio is Connected
   if (current_millis - radio_task_millis >= RADIO_TASK_INTERVAL) {
@@ -170,10 +167,12 @@ void loop() {
       uint8_t len = sizeof(buf);
       if (rf95.recv(buf, &len)) {
         strncpy(received_data, (char*)buf, len);
-      } else {
+      } 
+      else {
         handleNoResponse();
       }
-    } else {
+    } 
+    else {
       handleNoResponse();
     }
   }
@@ -183,12 +182,6 @@ void loop() {
   }
 
   if (send_float){
-    float_curr_state = psiCompare(psi_half_sec, psi_full_sec, depth, switch_bottom_state, switch_top_state, ez_switch_bottom, ez_switch_top);
-    motorDirection(float_curr_state, depth, psi_hald_sec - psi_full_sec);
-    
-    if (float_curr_state == MAINTAIN) {
-      maintainDepth(current_millis, depth);
-    }
     // Gets data for current psi at 1/2 a second    
     if (current_millis - psi_task_half_millis >= PSI_TASK_HALF_INTERVAL) {
       psi_task_half_millis = current_millis;
@@ -202,17 +195,12 @@ void loop() {
     // Determines if the float is moving based on a change of psi
     if (current_millis - psi_change_check_millis >= PSI_CHANGE_CHECK_INTERVAL) {
       psi_change_check_millis = current_millis;
-      float_curr_state = psiCompare(psi_half_sec, psi_full_sec, depth, switch_bottom_state, switch_top_state, ez_switch_bottom, ez_switch_top);
+      psi_change = psi_half_sec - psi_full_sec;
     }
 
     // Checks what the float state will be currently at
-    float_curr_state = psiCompare(psi_half_sec, psi_full_sec, depth, switch_bottom_state, switch_top_state, ez_switch_bottom, ez_switch_top);
-    // Acts accordingly based on the state
-    motorDirection(float_curr_state, depth, psi_half_sec - psi_full_sec);
-    // If the float is Maintaining run maintain func
-    if (float_curr_state == MAINTAIN) {
-      maintainDepth(maintain_updates, depth);
-    }
+    checkMotorState(float_curr_state, depth, abs(psi_change), switch_top_state, switch_bottom_state);
+    moveMotor(motor_direction);
 
     // Every 10 Seconds update list
     if (current_millis - list_updater_millis >= LIST_UPDATER_INTERVAL) {
@@ -242,10 +230,12 @@ void loop() {
           sendData();
           has_maintained = false;
           maintain_updates = 0;
-        } else {
+        } 
+        else {
           handleNoResponse();
         }
-      } else {
+      } 
+      else {
         handleNoResponse();
       }
     }
@@ -283,64 +273,80 @@ void handleNoResponse() {
   // Add things
 }
 
-Float_State psiCompare(float half_time_psi, float full_time_psi, float curr_depth, 
-    Switch_State switch_bottom_state, Switch_State switch_top_state, bool ez_switch_bottom, bool ez_switch_top) {
-  float calc_psi_diff = abs(full_time_psi - half_time_psi);
-
-  if (calc_psi_diff <= 1.0) {
-    if (curr_depth <= MAX_MAINTAIN_DEPTH && curr_depth >= MIN_MAINTAIN_DEPTH && !has_maintained) {
-      return MAINTAIN;
-    } else if ((switch_bottom_state == ACTIVE) || (ez_switch_bottom == true)) {
-      return SURFACED;
-    } else if ((switch_top_state == ACTIVE) || (ez_switch_top == true)) {
-      return FLOORED;
-    } else if ((switch_bottom_state == INACTIVE && switch_top_state == INACTIVE) || (ez_switch_bottom == false && ez_switch_top == false)) {
-      return SUBMURSED;
-    }
-  }
-  return MOVING;
-}
-
-void motorDirection(Float_State float_state, float curr_depth, float psi_diff) {
+void checkMotorState (Float_State float_state, float curr_depth, float psi_change, bool switch_top_state, bool switch_bottom_state) {
   switch (float_state) {
     case SURFACED:
-      digitalWrite(OUT_A, LOW);
-      digitalWrite(OUT_B, HIGH);
-      digitalWrite(LED_BUILTIN, LOW);
-      break;
-    case SUBMURSED:
-      digitalWrite(OUT_A, LOW);
-      digitalWrite(OUT_B, LOW);
-      digitalWrite(LED_BUILTIN, HIGH);
+      if (psi_change != 0){
+        float_curr_state = IDLE; 
+        motor_direction = STALLED;
+      }
+      else {
+        float_curr_state = MOVING_UP; 
+        motor_direction = COUNTERCLOCKWISE; 
+      }
       break;
     case FLOORED:
-      digitalWrite(OUT_A, HIGH);
-      digitalWrite(OUT_B, LOW);
-      digitalWrite(LED_BUILTIN, HIGH);
-      break;
-    case MOVING:
-      if (psi_diff < 0) { // Psi diff will be negative meaning it must be moving down and will continue to do so
-        digitalWrite(OUT_A, HIGH);
-        digitalWrite(OUT_B, LOW);
-      } else if (psi_diff > 0) { // Psi diff will be positive meaning it must be moving up and will continue to do so
-        digitalWrite(OUT_A, LOW);
-        digitalWrite(OUT_B, HIGH);
+      if (psi_change != 0){
+        float_curr_state = IDLE; 
+        motor_direction = STALLED;
       }
-      digitalWrite(LED_BUILTIN, LOW);
+      else {
+        float_curr_state = MOVING_DOWN; 
+        motor_direction = CLOCKWISE; 
+      }
+      break;
+    case MOVING_UP:
+      if (switch_bottom_state){
+        float_curr_state = SURFACED;
+        motor_direction = STALLED;
+      }
+      else {
+        float_curr_state = MOVING_UP;
+        motor_direction = COUNTERCLOCKWISE;
+      }
+      break;
+    case MOVING_DOWN:
+      if (switch_top_state){
+        float_curr_state = FLOORED;
+        motor_direction = STALLED;
+      }
+      else {
+        float_curr_state = MOVING_DOWN;
+        motor_direction = CLOCKWISE;
+      }
       break;
     case MAINTAIN:
+      maintainDepth(maintain_updates, curr_depth);
+      break;
+    case IDLE:
+      motor_direction = STALLED;
+      break;
+    default:
+      float_curr_state = IDLE;
+      motor_direction = STALLED;
+      break;
+  }
+}
+
+void moveMotor(Motor_Direction motor_direction){
+  switch(motor_direction){
+    case CLOCKWISE:
+      digitalWrite(OUT_A, HIGH);
+      digitalWrite(OUT_B, LOW);
+      break;
+    case COUNTERCLOCKWISE:
+      digitalWrite(OUT_A, LOW);
+      digitalWrite(OUT_B, HIGH);
+      break;
+    case STALLED:
       digitalWrite(OUT_A, LOW);
       digitalWrite(OUT_B, LOW);
-      digitalWrite(LED_BUILTIN, LOW);
       break;
     default:
       digitalWrite(OUT_A, LOW);
       digitalWrite(OUT_B, LOW);
-      digitalWrite(LED_BUILTIN, LOW);
       break;
   }
-  pinMode(12, INPUT_PULLUP);
-  pinMode(A3, INPUT_PULLUP);
 }
 
 void maintainDepth(int total_maintain_updates, float curr_depth) {
@@ -348,34 +354,22 @@ void maintainDepth(int total_maintain_updates, float curr_depth) {
     if (curr_depth < MIN_MAINTAIN_DEPTH) { // Attempts to readjust float
       digitalWrite(OUT_A, HIGH);
       digitalWrite(OUT_B, LOW);
-    } else if (curr_depth > MAX_MAINTAIN_DEPTH) { // Attempts to readjust float
+    } 
+    else if (curr_depth > MAX_MAINTAIN_DEPTH) { // Attempts to readjust float
       digitalWrite(OUT_A, LOW);
       digitalWrite(OUT_B, HIGH);
-    } else {
+    } 
+    else {
       digitalWrite(OUT_A, LOW);
       digitalWrite(OUT_B, LOW);
     }
-  } else {
+  } 
+  else {
     has_maintained = true;
-    float_curr_state = FLOORED;
-  }
-  pinMode(12, INPUT_PULLUP);
-  pinMode(A3, INPUT_PULLUP);
-}
-
-void switchBottomDetect() {
-  if (digitalRead(A3) == HIGH) {
-    switch_bottom_state = ACTIVE;
-    switch_top_state = INACTIVE;
+    float_curr_state = MOVING_DOWN;
   }
 }
 
-void switchTopDetect() {
-  if (digitalRead(12) == HIGH) {
-    switch_top_state = ACTIVE;
-    switch_bottom_state = INACTIVE;
-  }
-}
 #pragma endregion
 
 // This code makes me want tpo cry - Tyerone
