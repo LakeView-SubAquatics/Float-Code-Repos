@@ -48,6 +48,8 @@ const int DIAG_PORT_B = 10;
 const int PWM_PORT = 9;
 const int DUTY_CYCLE = 255;
 const int PRESSURE_PIN = A1;
+const int SWITCH_TOP_PIN = 12;
+const int SWITCH_BOTTOM_PIN = A3;
 
 // TImer Variables Definemnt - In MiliSeconds
 // Timers
@@ -67,8 +69,8 @@ const long LIST_UPDATER_INTERVAL = 5000; // 5 Seconds
 //const long MAINTAIN_DEEPTH_DURATION = 60000; // 1 Minute
 
 // Button Port Definement
-ezButton switch_top(12);
-ezButton switch_bottom(A3);
+ezButton switch_top(SWITCH_TOP_PIN);
+ezButton switch_bottom(SWITCH_BOTTOM_PIN);
 
 bool send_float = false;
 
