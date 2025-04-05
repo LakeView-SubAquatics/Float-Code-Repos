@@ -299,7 +299,7 @@ void checkMotorState (Float_State float_state, float curr_depth, float psi_chang
       }
       break;
     case MOVING_UP:
-      if (switch_bottom_state){
+      if (switch_top_state){
         float_curr_state = SURFACED;
         motor_direction = STALLED;
       }
@@ -309,7 +309,7 @@ void checkMotorState (Float_State float_state, float curr_depth, float psi_chang
       }
       break;
     case MOVING_DOWN:
-      if (switch_top_state){
+      if (switch_bottom_state){
         float_curr_state = FLOORED;
         motor_direction = STALLED;
       }
@@ -322,6 +322,10 @@ void checkMotorState (Float_State float_state, float curr_depth, float psi_chang
       maintainDepth(maintain_updates, curr_depth);
       break;
     case IDLE:
+      if (psi_change < 1) {
+        float_curr_state = MOVING_DOWN;
+        motor_direction = CLOCKWISE;
+      }
       motor_direction = STALLED;
       break;
     default:
