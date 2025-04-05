@@ -128,6 +128,7 @@ void setup() {
     float_curr_state = IDLE;
     motor_direction = STALLED;
   }
+  moveMotor(motor_direction);
 
   // Setup radio pins
   digitalWrite(RFM95_RST, LOW);
