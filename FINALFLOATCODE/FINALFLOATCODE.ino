@@ -47,6 +47,7 @@ const int OUT_B = 11;
 const int DIAG_PORT_B = 10;
 const int PWM_PORT = 9;
 const int DUTY_CYCLE = 255;
+const int PRESSURE_PIN = A1;
 
 // TImer Variables Definemnt - In MiliSeconds
 // Timers
@@ -147,8 +148,8 @@ void loop() {
   unsigned long current_millis = millis();
 
   // Calculate Current Pressure
-  float pressure_pin = analogRead(A1);
-  float psi = (0.0374 * pressure_pin) - 3.3308;
+  float pressure_volt_reading = analogRead(PRESSURE_PIN);
+  float psi = (0.0374 * pressure_volt_reading) - 3.3308;
   float pascal_pi = (psi - 14.7) * 6894.76;
   float depth = (pascal_pi / (1002 * 9.81));
   depth = depth < 0 ? 0 : depth;
