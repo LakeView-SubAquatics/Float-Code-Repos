@@ -114,8 +114,8 @@ void setup() {
   switch_top.setDebounceTime(50);
   switch_bottom.setDebounceTime(50);
 
-  pinMode(12, INPUT_PULLUP);
-  pinMode(A3, INPUT_PULLUP);
+  pinMode(SWITCH_TOP_PIN, INPUT_PULLUP);
+  pinMode(SWITCH_BOTTOM_PIN, INPUT_PULLUP);
   
   // Get bottom switch state
   switch_bottom.loop();
@@ -322,11 +322,14 @@ void checkMotorState (Float_State float_state, float curr_depth, float psi_chang
       maintainDepth(maintain_updates, curr_depth);
       break;
     case IDLE:
-      if (psi_change < 1) {
+      if (psi_change < 1) { // In the case that its idle and either actually floored or surfaced, force the motor to move
         float_curr_state = MOVING_DOWN;
         motor_direction = CLOCKWISE;
+      } 
+      else {
+        float_curr_state = IDLE;
+        motor_direction = STALLED;
       }
-      motor_direction = STALLED;
       break;
     default:
       float_curr_state = IDLE;
