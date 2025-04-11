@@ -125,7 +125,7 @@ void loop() {
   }
 
   // Listen for surface command
-  if (rf95.waitAvailableTimeout(1000)) {
+  if (rf95.waitAvailableTimeout(1000) && start_motor == false) {
     uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
     uint8_t len = sizeof(buf);
     if (rf95.recv(buf, &len)) {
