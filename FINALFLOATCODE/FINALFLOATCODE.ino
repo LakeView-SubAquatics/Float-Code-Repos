@@ -154,7 +154,7 @@ void loop() {
   float pressure_volt_reading = analogRead(PRESSURE_PIN);
   float psi = (0.0374 * pressure_volt_reading) - 3.3308;
   float pascal_pi = (psi - 14.7) * 6894.76;
-  float depth = (pascal_pi / (1002 * 9.81));
+  float depth = psi * 0.703;
   depth = depth < 0 ? 0 : depth;
 
   // Check Limit Switch/Button State
@@ -164,9 +164,10 @@ void loop() {
   bool switch_bottom_state = switch_bottom.isPressed();
 
   // Check to See that Radio is Connected
+  if (send_float == false) {
   if (current_millis - radio_task_millis >= RADIO_TASK_INTERVAL) {
     radio_task_millis = current_millis;
-    if (rf95.waitAvailableTimeout(1000)) {
+    if (rf95.available()) {
       uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
       uint8_t len = sizeof(buf);
       if (rf95.recv(buf, &len)) {
@@ -180,6 +181,7 @@ void loop() {
       handleNoResponse();
     }
   }
+}
 
   if (strcmp(received_data, "initiate") == 0) {
     send_float = true; 
@@ -206,7 +208,7 @@ void loop() {
     checkMotorState(float_curr_state, depth, abs(psi_change), switch_top_state, switch_bottom_state);
     moveMotor(motor_direction);
 
-    // Every 10 Seconds update list
+    // Every 5 Seconds update list
     if (current_millis - list_updater_millis >= LIST_UPDATER_INTERVAL) {
       list_updater_millis = current_millis;
       // If data gets too large reset list 
@@ -227,7 +229,7 @@ void loop() {
 
     // Might want to force the motor to stall and then reanble it afterwords, will do later its 12:39 am
     if (float_curr_state == SURFACED) {
-      if (rf95.waitAvailableTimeout(1000)) {
+      if (rf95.available()) {
         uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
         uint8_t len = sizeof(buf);
         if (rf95.recv(buf, &len)) {
