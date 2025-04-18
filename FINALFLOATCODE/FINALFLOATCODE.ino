@@ -1,7 +1,7 @@
 /* 
   Author(s): Tyerone Chen, Danny Henningfield, Adam Palma
   Init Create: 6/30/2024
-  Last update: 4/4/2025
+  Last update: 4/18/2025
 */
 
 #include <SPI.h>
@@ -9,26 +9,23 @@
 #include <ezButton.h>
 #include <List.hpp>
 
-#pragma region Variable_Definement
+#pragma region Variable_Definition
 
 #if defined(ADAFRUIT_FEATHER_M0) || defined(ADAFRUIT_FEATHER_M0_EXPRESS) || defined(ARDUINO_SAMD_FEATHER_M0)
-#define RFM95_CS    8
-#define RFM95_INT   3
-#define RFM95_RST   4
+  #define RFM95_CS    8
+  #define RFM95_INT   3
+  #define RFM95_RST   4
 #endif
 
-// Radio Definement
 #define RF95_FREQ 915.0
 RH_RF95 rf95(RFM95_CS, RFM95_INT);
 char received_data[RH_RF95_MAX_MESSAGE_LEN];
 int16_t packetnum = 0;
 
-// List Definement
 List<float> psiList;
 List<float> depthList;
 List<unsigned long> timeList;
 
-// List Variables Definement
 const int MAX_LIST_SIZE = 2000;
 const String COMPANY_NAME = "LakeView SubAquatics-#";
 float psi_half_sec = 0.0;
@@ -36,11 +33,10 @@ float psi_full_sec = 0.0;
 float psi_change = 0.0;
 bool has_maintained = false;
 int maintain_updates = 0;
-const int MAX_MAINTAINS = 12; // WIll be roughly 1 Minute of total time of maintaining depth
-const float MIN_MAINTAIN_DEPTH = 2.4;
-const float MAX_MAINTAIN_DEPTH = 2.6;
+const int MAX_MAINTAINS = 6;
+const float MIN_MAINTAIN_DEPTH = 2.3;
+const float MAX_MAINTAIN_DEPTH = 2.7;
 
-// Port Definement
 const int OUT_A = 5;
 const int DIAG_PORT_A = 6;
 const int OUT_B = 11;
@@ -51,37 +47,34 @@ const int PRESSURE_PIN = A1;
 const int SWITCH_TOP_PIN = 12;
 const int SWITCH_BOTTOM_PIN = A3;
 
-// TImer Variables Definemnt - In MiliSeconds
-// Timers
 unsigned long radio_task_millis = 0;
 unsigned long psi_task_half_millis = 0;
 unsigned long psi_task_full_millis = 0;
 unsigned long psi_change_check_millis = 0;
 unsigned long list_updater_millis = 0;
-//unsigned long maintain_depth_millis = 0;
+unsigned long maintain_timer_millis = 0;
+unsigned long last_send_time = 0;
 
-// Intervals
-const long RADIO_TASK_INTERVAL = 1000; // About 1 Second
-const long PSI_TASK_HALF_INTERVAL = 1001; // About 1/2 Second
-const long PSI_TASK_FULL_INTERVAL = 1250; // 1.25 Seconds
-const long PSI_CHANGE_CHECK_INTERVAL = 500; // 1 a second
-const long LIST_UPDATER_INTERVAL = 5000; // 5 Seconds
-//const long MAINTAIN_DEEPTH_DURATION = 60000; // 1 Minute
-
-// Button Port Definement
-ezButton switch_top(SWITCH_TOP_PIN);
-ezButton switch_bottom(SWITCH_BOTTOM_PIN);
+const long RADIO_TASK_INTERVAL = 1500;
+const long PSI_TASK_HALF_INTERVAL = 1001;
+const long PSI_TASK_FULL_INTERVAL = 1250;
+const long PSI_CHANGE_CHECK_INTERVAL = 500;
+const long LIST_UPDATER_INTERVAL = 5000;
+const unsigned long SEND_INTERVAL = 2000; // 1 second between data points
 
 bool send_float = false;
+int initiateCount = 0; 
 
-// Float Movement
+// New global variable: counts the number of complete data-sending cycles.
+int sendCycleCount = 0;
+
 enum Float_State { 
   SURFACED, 
   MOVING_UP,
   MOVING_DOWN, 
   FLOORED,
-  MAINTAIN, // Hold Position
-  IDLE // Stall until further notice
+  MAINTAIN,
+  IDLE
 };
 volatile Float_State float_curr_state = SURFACED;
 
@@ -96,7 +89,10 @@ volatile Motor_Direction motor_direction = STALLED;
 
 #pragma region Setup
 void setup() {
-  // Establish Port Settings
+  pinMode(LED_BUILTIN, OUTPUT);
+  pinMode(SWITCH_TOP_PIN, INPUT_PULLUP);
+  pinMode(SWITCH_BOTTOM_PIN, INPUT_PULLUP);
+
   analogWrite(PWM_PORT, DUTY_CYCLE);
   pinMode(RFM95_RST, OUTPUT);
   digitalWrite(RFM95_RST, HIGH);
@@ -110,27 +106,8 @@ void setup() {
   digitalWrite(DIAG_PORT_A, HIGH);
   digitalWrite(DIAG_PORT_B, HIGH);
 
-  // Establish Button Port Settings
-  switch_top.setDebounceTime(50);
-  switch_bottom.setDebounceTime(50);
-
-  pinMode(SWITCH_TOP_PIN, INPUT_PULLUP);
-  pinMode(SWITCH_BOTTOM_PIN, INPUT_PULLUP);
-  
-  // Get bottom switch state
-  switch_bottom.loop();
-  // Sets the motor to hit the bottom switch if it isn't already
-  if (!switch_bottom.isPressed()){
-    float_curr_state = MOVING_DOWN;
-    motor_direction = CLOCKWISE;
-  } 
-  else {
-    float_curr_state = IDLE;
-    motor_direction = STALLED;
-  }
   moveMotor(motor_direction);
 
-  // Setup radio pins
   digitalWrite(RFM95_RST, LOW);
   digitalWrite(RFM95_RST, HIGH);
 
@@ -141,108 +118,115 @@ void setup() {
     handleNoResponse();
   }
   rf95.setTxPower(23, false);
+
+  if (digitalRead(SWITCH_BOTTOM_PIN) == HIGH) {
+    //sendLoRaMessage("Switch setup with HIGH");
+    motor_direction = CLOCKWISE;
+  } else {
+    //sendLoRaMessage("Switch setup with LOW");
+    motor_direction = STALLED;
+  }
 }
 #pragma endregion
 
-
 #pragma region Main_Program/Loop
 void loop() {
-  // Save Current Time
   unsigned long current_millis = millis();
 
-  // Calculate Current Pressure
   float pressure_volt_reading = analogRead(PRESSURE_PIN);
   float psi = (0.0374 * pressure_volt_reading) - 3.3308;
   float pascal_pi = (psi - 14.7) * 6894.76;
   float depth = psi * 0.703;
   depth = depth < 0 ? 0 : depth;
 
-  // Check Limit Switch/Button State
-  switch_top.loop();
-  switch_bottom.loop();
-  bool switch_top_state = switch_top.isPressed();
-  bool switch_bottom_state = switch_bottom.isPressed();
-
-  // Check to See that Radio is Connected
-  if (send_float == false) {
-  if (current_millis - radio_task_millis >= RADIO_TASK_INTERVAL) {
-    radio_task_millis = current_millis;
-    if (rf95.available()) {
-      uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
-      uint8_t len = sizeof(buf);
-      if (rf95.recv(buf, &len)) {
-        strncpy(received_data, (char*)buf, len);
-      } 
-      else {
-        handleNoResponse();
-      }
-    } 
-    else {
-      handleNoResponse();
+  if(has_maintained == true) {
+    digitalWrite(LED_BUILTIN, millis() % 500 < 250); // blink every 500ms
+    if (digitalRead(SWITCH_BOTTOM_PIN) == HIGH) {
+      //sendLoRaMessage("Switch setup with HIGH");
+      motor_direction = CLOCKWISE;
+    } else {
+      motor_direction = STALLED;
     }
   }
-}
 
-  if (strcmp(received_data, "initiate") == 0) {
-    send_float = true; 
+  if (current_millis - list_updater_millis >= LIST_UPDATER_INTERVAL) {
+    list_updater_millis = current_millis;
+    // Save data
+    if (psiList.getSize() < MAX_LIST_SIZE) {
+      psiList.add(psi);
+      depthList.add(depth);
+      timeList.add(current_millis);
+    }
   }
 
-  if (send_float){
-    // Gets data for current psi at 1/2 a second    
+  if(!send_float) {
+    if (digitalRead(SWITCH_BOTTOM_PIN) == HIGH) {
+      //sendLoRaMessage("Switch setup with HIGH");
+      motor_direction = CLOCKWISE;
+    } else {
+      motor_direction = STALLED;
+    }
+    moveMotor(motor_direction);
+  }
+  
+  radio_task_millis = current_millis;
+  if (rf95.available()) {
+    uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
+    uint8_t len = sizeof(buf);
+    if (rf95.recv(buf, &len)) {
+      strncpy(received_data, (char*)buf, len);
+    } else {
+      handleNoResponse();
+    }
+  } else {
+    handleNoResponse();
+  }
+
+  if (strcmp(received_data, "initiate") == 0 && initiateCount == 0) {
+    initiateCount++;
+    send_float = true;
+    float_curr_state = MOVING_DOWN;
+  }
+
+  if (send_float) {
     if (current_millis - psi_task_half_millis >= PSI_TASK_HALF_INTERVAL) {
       psi_task_half_millis = current_millis;
       psi_half_sec = psi;
     }
-    // Gets data for current psi at 1 a second  
+
     if (current_millis - psi_task_full_millis >= PSI_TASK_FULL_INTERVAL) {
       psi_task_full_millis = current_millis;
       psi_full_sec = psi;
     }
-    // Determines if the float is moving based on a change of psi
+
     if (current_millis - psi_change_check_millis >= PSI_CHANGE_CHECK_INTERVAL) {
       psi_change_check_millis = current_millis;
       psi_change = psi_half_sec - psi_full_sec;
     }
 
-    // Checks what the float state will be currently at
+    bool switch_top_state = digitalRead(SWITCH_TOP_PIN) == LOW;
+    bool switch_bottom_state = digitalRead(SWITCH_BOTTOM_PIN) == LOW;
+
     checkMotorState(float_curr_state, depth, abs(psi_change), switch_top_state, switch_bottom_state);
     moveMotor(motor_direction);
 
-    // Every 5 Seconds update list
-    if (current_millis - list_updater_millis >= LIST_UPDATER_INTERVAL) {
-      list_updater_millis = current_millis;
-      // If data gets too large reset list 
-      if (psiList.getSize() >= MAX_LIST_SIZE) {
-        psiList.remove(0);
-        depthList.remove(0);
-        timeList.remove(0);
+    if (has_maintained == true) {
+      if (millis() - last_send_time >= SEND_INTERVAL) {
+        last_send_time = millis();
+        if (depth < 0.2 && abs(psi_change) < 0.4) {
+          sendIncrementalData();
+        }
       }
-      // Adds data list
-      psiList.add(psi);
-      depthList.add(depth);
-      timeList.add(current_millis);
-      // If the float is MAINTAIN update the ammount of times list has been updated while under this state
-      if (float_curr_state == MAINTAIN){
-        maintain_updates++;
-      }
-    }
-
-    // Might want to force the motor to stall and then reanble it afterwords, will do later its 12:39 am
-    if (float_curr_state == SURFACED) {
       if (rf95.available()) {
         uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
         uint8_t len = sizeof(buf);
         if (rf95.recv(buf, &len)) {
           strncpy(received_data, (char*)buf, len);
-          sendData();
-          has_maintained = false;
-          maintain_updates = 0;
-        } 
-        else {
+          // Optionally, state transitions can be modified here.
+        } else {
           handleNoResponse();
         }
-      } 
-      else {
+      } else {
         handleNoResponse();
       }
     }
@@ -251,136 +235,189 @@ void loop() {
 #pragma endregion
 
 #pragma region Functions
-void sendData() {
-  String data = COMPANY_NAME + ": ";
-  data += "PSI: ";
-  for (int i = 0; i < psiList.getSize(); i++) {
-    data += String(psiList.get(i)) + ", ";
-  }
-  data += "DEPTH: ";
-  for (int i = 0; i < depthList.getSize(); i++) {
-    data += String(depthList.get(i)) + ", ";
-  }
-  data += "TIME: ";
-  for (int i = 0; i < timeList.getSize(); i++) {
-    data += String(timeList.get(i)) + ", ";
-  }
-
-  if (data.length() >= RH_RF95_MAX_MESSAGE_LEN) {
-    data = data.substring(0, RH_RF95_MAX_MESSAGE_LEN - 1);
-  }
-
-  char send_buffer[RH_RF95_MAX_MESSAGE_LEN];
-  data.toCharArray(send_buffer, RH_RF95_MAX_MESSAGE_LEN);
-  rf95.send((uint8_t *)send_buffer, strlen(send_buffer));
-  rf95.waitPacketSent();
-}
 
 void handleNoResponse() {
-  // Add things
+  // Placeholder for handling a missing radio response, if needed.
 }
 
-void checkMotorState (Float_State float_state, float curr_depth, float psi_change, bool switch_top_state, bool switch_bottom_state) {
+void checkMotorState(Float_State float_state, float curr_depth, float psi_change, bool switch_top_state, bool switch_bottom_state) {
+  // Always re-read the digital switch states.
+  switch_top_state = digitalRead(SWITCH_TOP_PIN) == LOW;
+  switch_bottom_state = digitalRead(SWITCH_BOTTOM_PIN) == LOW;
+
   switch (float_state) {
     case SURFACED:
-      if (psi_change != 0){
-        float_curr_state = IDLE; 
+      //sendLoRaMessage("ENTERED SURFACE");
+      if (abs(psi_change) <= 0.1) {
         motor_direction = STALLED;
-      }
-      else {
-        float_curr_state = MOVING_UP; 
-        motor_direction = COUNTERCLOCKWISE; 
+      } else {
+        motor_direction = STALLED;
       }
       break;
     case FLOORED:
-      if (psi_change != 0){
-        float_curr_state = IDLE; 
+      //sendLoRaMessage("ENTERED FLOORED");
+      if (psi_change != 0) {
+        float_curr_state = IDLE;
         motor_direction = STALLED;
-      }
-      else {
-        float_curr_state = MOVING_DOWN; 
-        motor_direction = CLOCKWISE; 
+      } else {
+        float_curr_state = MOVING_DOWN;
+        motor_direction = CLOCKWISE;
       }
       break;
     case MOVING_UP:
-      if (switch_top_state){
+      //sendLoRaMessage("ENTERED MOVING UP");
+      if (switch_top_state) {
         float_curr_state = SURFACED;
         motor_direction = STALLED;
-      }
-      else {
+      } else {
         float_curr_state = MOVING_UP;
         motor_direction = COUNTERCLOCKWISE;
       }
       break;
     case MOVING_DOWN:
-      if (switch_bottom_state){
-        float_curr_state = FLOORED;
+      //sendLoRaMessage("ENTERED MOVING DOWN");
+      if (switch_bottom_state) {
+        //sendLoRaMessage("Bottom switch triggered in MOVING_DOWN");
+        float_curr_state = MAINTAIN;
         motor_direction = STALLED;
-      }
-      else {
+      } else {
         float_curr_state = MOVING_DOWN;
         motor_direction = CLOCKWISE;
       }
       break;
     case MAINTAIN:
+      digitalWrite(LED_BUILTIN, LOW);
+      //sendLoRaMessage("ENTERED MAINTAIN");
       maintainDepth(maintain_updates, curr_depth);
       break;
     case IDLE:
-      if (psi_change < 1) { // In the case that its idle and either actually floored or surfaced, force the motor to move
+      //sendLoRaMessage("ENTERED IDLE");
+      if (!switch_bottom_state) {
         float_curr_state = MOVING_DOWN;
         motor_direction = CLOCKWISE;
-      } 
-      else {
-        float_curr_state = IDLE;
-        motor_direction = STALLED;
+      } else {
+        float_curr_state = MAINTAIN;
       }
       break;
     default:
-      float_curr_state = IDLE;
-      motor_direction = STALLED;
+      //sendLoRaMessage("ENTERED DEFAULT");
       break;
   }
 }
 
-void moveMotor(Motor_Direction motor_direction){
-  switch(motor_direction){
+void moveMotor(Motor_Direction motor_direction) {
+  switch (motor_direction) {
     case CLOCKWISE:
+      //sendLoRaMessage("MOTOR CLOCKWISE");
       digitalWrite(OUT_A, HIGH);
       digitalWrite(OUT_B, LOW);
+      analogWrite(PWM_PORT, DUTY_CYCLE);
       break;
     case COUNTERCLOCKWISE:
+      //sendLoRaMessage("MOTOR COUNTER CLOCKWISE");
       digitalWrite(OUT_A, LOW);
       digitalWrite(OUT_B, HIGH);
+      analogWrite(PWM_PORT, DUTY_CYCLE);
       break;
     case STALLED:
+      //sendLoRaMessage("MOTOR STALLED");
       digitalWrite(OUT_A, LOW);
       digitalWrite(OUT_B, LOW);
+      analogWrite(PWM_PORT, DUTY_CYCLE);
       break;
     default:
+      //sendLoRaMessage("MOTOR DEFAULT");
       digitalWrite(OUT_A, LOW);
       digitalWrite(OUT_B, LOW);
+      analogWrite(PWM_PORT, DUTY_CYCLE);
       break;
   }
 }
 
 void maintainDepth(int total_maintain_updates, float curr_depth) {
-  if (total_maintain_updates <= MAX_MAINTAINS) { // Check to see how many times the list has been updated while MAINTAINED
-    if (curr_depth < MIN_MAINTAIN_DEPTH) { // Attempts to readjust float
-      motor_direction = CLOCKWISE;
-    } 
-    else if (curr_depth > MAX_MAINTAIN_DEPTH) { // Attempts to readjust float
-      motor_direction = COUNTERCLOCKWISE;
-    } 
-    else {
+  bool switch_top_state = digitalRead(SWITCH_TOP_PIN) == LOW;
+  bool switch_bottom_state = digitalRead(SWITCH_BOTTOM_PIN) == LOW;
+
+  // Count how many depth values fall within the 2.0m to 3.0m range.
+  maintain_updates = 0;
+  for (int i = 0; i < depthList.getSize(); i++) {
+    float d = depthList.get(i);
+    if (d >= 2.0 && d <= 3.0) {
+      maintain_updates++;
+    }
+  }
+
+  if (maintain_updates < MAX_MAINTAINS) {
+    if (curr_depth < MIN_MAINTAIN_DEPTH) {
+      if (!switch_top_state) {
+        motor_direction = COUNTERCLOCKWISE;
+      } else {
+        motor_direction = STALLED;
+      }
+    } else if (curr_depth > MAX_MAINTAIN_DEPTH) {
+      if (!switch_bottom_state) {
+        motor_direction = CLOCKWISE;
+      } else {
+        motor_direction = STALLED;
+      }
+    } else {
       motor_direction = STALLED;
     }
-  } 
-  else {
+  } else {
     has_maintained = true;
-    float_curr_state = MOVING_DOWN;
+    float_curr_state = MOVING_DOWN; // Ascend to the top
   }
 }
 
-#pragma endregion
+void sendLoRaMessage(String message) {
+  if (message.length() >= RH_RF95_MAX_MESSAGE_LEN) {
+    message = message.substring(0, RH_RF95_MAX_MESSAGE_LEN - 1);
+  }
+  char buffer[RH_RF95_MAX_MESSAGE_LEN];
+  message.toCharArray(buffer, RH_RF95_MAX_MESSAGE_LEN);
+  rf95.send((uint8_t *)buffer, strlen(buffer));
+  rf95.waitPacketSent();
+}
 
-// This code makes me want tpo cry - Tyerone
+int currentIndex = 0; // Keeps track of the current index being sent
+void sendIncrementalData() {
+  if (currentIndex >= timeList.getSize()) {
+    // All data sent—increment the cycle counter.
+    sendCycleCount++;
+    if (sendCycleCount >= 2) {
+      // After 2 complete send cycles, stop entering maintain mode.
+      psiList.clear();
+      depthList.clear();
+      timeList.clear();
+      currentIndex = 0;
+      has_maintained = false;
+      maintain_updates = 0;
+      float_curr_state = IDLE;  // Transition to IDLE (or a final state)
+      send_float = false;       // Disable further data sending/maintain activity
+      return;
+    } else {
+      // Otherwise, reset for another data-sending cycle.
+      psiList.clear();
+      depthList.clear();
+      timeList.clear();
+      currentIndex = 0;
+      has_maintained = false;
+      maintain_updates = 0;
+      float_curr_state = MAINTAIN;
+      send_float = true; // Continue data transmissions
+      return;
+    }
+  }
+  // Ensure there is data to send at the current index.
+  if (timeList.getSize() > currentIndex && psiList.getSize() > currentIndex && depthList.getSize() > currentIndex) {
+    String message = COMPANY_NAME + "\n";
+    message += "Index: " + String(currentIndex) + "\n";
+    message += "Time: " + String(timeList.get(currentIndex)) + " ms\n";
+    message += "Pressure: " + String(psiList.get(currentIndex), 2) + " PSI\n";
+    message += "Depth: " + String(depthList.get(currentIndex), 2) + " m\n";
+    sendLoRaMessage(message);
+    currentIndex++;
+  } 
+}
+
+#pragma endregion
