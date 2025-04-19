@@ -1,7 +1,7 @@
 /* 
   Author(s): Tyerone Chen, Danny Henningfield, Adam Palma
   Init Create: 6/30/2024
-  Last update: 4/18/2025
+  Last update: 4/19/2025
 */
 
 #include <SPI.h>
@@ -33,9 +33,12 @@ float psi_full_sec = 0.0;
 float psi_change = 0.0;
 bool has_maintained = false;
 int maintain_updates = 0;
+float psi_surface_start = 0;
 const int MAX_MAINTAINS = 6;
-const float MIN_MAINTAIN_DEPTH = 2.3;
-const float MAX_MAINTAIN_DEPTH = 2.7;
+const float MIN_MAINTAIN_DEPTH = 0.9;
+const float MAX_MAINTAIN_DEPTH = 1.1;
+const float MIN_TOLERANCE = 0.5;
+const float MAX_TOLERANCE = 1.5; 
 
 const int OUT_A = 5;
 const int DIAG_PORT_A = 6;
@@ -60,7 +63,7 @@ const long PSI_TASK_HALF_INTERVAL = 1001;
 const long PSI_TASK_FULL_INTERVAL = 1250;
 const long PSI_CHANGE_CHECK_INTERVAL = 500;
 const long LIST_UPDATER_INTERVAL = 5000;
-const unsigned long SEND_INTERVAL = 2000; // 1 second between data points
+const unsigned long SEND_INTERVAL = 1500; // 1 second between data points
 
 bool send_float = false;
 int initiateCount = 0; 
@@ -105,7 +108,7 @@ void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(DIAG_PORT_A, HIGH);
   digitalWrite(DIAG_PORT_B, HIGH);
-
+  digitalWrite(LED_BUILTIN, HIGH);
   moveMotor(motor_direction);
 
   digitalWrite(RFM95_RST, LOW);
@@ -134,13 +137,12 @@ void loop() {
   unsigned long current_millis = millis();
 
   float pressure_volt_reading = analogRead(PRESSURE_PIN);
-  float psi = (0.0374 * pressure_volt_reading) - 3.3308;
+  float psi = ((0.0374 * pressure_volt_reading) - 3.3308) - psi_surface_start;
   float pascal_pi = (psi - 14.7) * 6894.76;
   float depth = psi * 0.703;
   depth = depth < 0 ? 0 : depth;
 
   if(has_maintained == true) {
-    digitalWrite(LED_BUILTIN, millis() % 500 < 250); // blink every 500ms
     if (digitalRead(SWITCH_BOTTOM_PIN) == HIGH) {
       //sendLoRaMessage("Switch setup with HIGH");
       motor_direction = CLOCKWISE;
@@ -183,6 +185,9 @@ void loop() {
   }
 
   if (strcmp(received_data, "initiate") == 0 && initiateCount == 0) {
+    if(initiateCount == 0) {
+      psi_surface_start = psi;
+    }
     initiateCount++;
     send_float = true;
     float_curr_state = MOVING_DOWN;
@@ -213,7 +218,8 @@ void loop() {
     if (has_maintained == true) {
       if (millis() - last_send_time >= SEND_INTERVAL) {
         last_send_time = millis();
-        if (depth < 0.2 && abs(psi_change) < 0.4) {
+        if (depth < 0.2 && psi_change < .1) {
+        digitalWrite(LED_BUILTIN, LOW); // blink every 500ms
           sendIncrementalData();
         }
       }
@@ -286,7 +292,6 @@ void checkMotorState(Float_State float_state, float curr_depth, float psi_change
       }
       break;
     case MAINTAIN:
-      digitalWrite(LED_BUILTIN, LOW);
       //sendLoRaMessage("ENTERED MAINTAIN");
       maintainDepth(maintain_updates, curr_depth);
       break;
@@ -342,7 +347,7 @@ void maintainDepth(int total_maintain_updates, float curr_depth) {
   maintain_updates = 0;
   for (int i = 0; i < depthList.getSize(); i++) {
     float d = depthList.get(i);
-    if (d >= 2.0 && d <= 3.0) {
+    if (d >= MIN_TOLERANCE && d <= MAX_TOLERANCE) {
       maintain_updates++;
     }
   }
