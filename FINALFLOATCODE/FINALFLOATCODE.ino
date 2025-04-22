@@ -1,7 +1,7 @@
 /* 
   Author(s): Tyerone Chen, Danny Henningfield, Adam Palma
   Init Create: 6/30/2024
-  Last update: 4/19/2025
+  Last update: 4/22/2025
 */
 
 #include <SPI.h>
@@ -34,11 +34,11 @@ float psi_change = 0.0;
 bool has_maintained = false;
 int maintain_updates = 0;
 float psi_surface_start = 0;
-const int MAX_MAINTAINS = 6;
-const float MIN_MAINTAIN_DEPTH = 0.9;
-const float MAX_MAINTAIN_DEPTH = 1.1;
-const float MIN_TOLERANCE = 0.5;
-const float MAX_TOLERANCE = 1.5; 
+const int MAX_MAINTAINS = 10;
+const float MIN_MAINTAIN_DEPTH = 2.4;
+const float MAX_MAINTAIN_DEPTH = 2.6;
+const float MIN_TOLERANCE = 2.0;
+const float MAX_TOLERANCE = 3.0; 
 
 const int OUT_A = 5;
 const int DIAG_PORT_A = 6;
@@ -121,6 +121,7 @@ void setup() {
     handleNoResponse();
   }
   rf95.setTxPower(23, false);
+  sendLoRaMessage("Float Initiated");
 
   if (digitalRead(SWITCH_BOTTOM_PIN) == HIGH) {
     //sendLoRaMessage("Switch setup with HIGH");
@@ -187,6 +188,7 @@ void loop() {
   if (strcmp(received_data, "initiate") == 0 && initiateCount == 0) {
     if(initiateCount == 0) {
       psi_surface_start = psi;
+      //sendLoRaMessage("Float Initiated");
     }
     initiateCount++;
     send_float = true;
@@ -218,7 +220,7 @@ void loop() {
     if (has_maintained == true) {
       if (millis() - last_send_time >= SEND_INTERVAL) {
         last_send_time = millis();
-        if (depth < 0.2 && psi_change < .1) {
+        if (depth < 0.1 && psi_change < .1) {
         digitalWrite(LED_BUILTIN, LOW); // blink every 500ms
           sendIncrementalData();
         }
