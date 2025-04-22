@@ -220,7 +220,7 @@ void loop() {
     if (has_maintained == true) {
       if (millis() - last_send_time >= SEND_INTERVAL) {
         last_send_time = millis();
-        if (depth < 0.1 && psi_change < .1) {
+        if (depth < 0.2 && psi_change < .1) {
         digitalWrite(LED_BUILTIN, LOW); // blink every 500ms
           sendIncrementalData();
         }
