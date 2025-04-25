@@ -121,7 +121,10 @@ void setup() {
     handleNoResponse();
   }
   rf95.setTxPower(23, false);
-  sendLoRaMessage("Float Initiated");
+  float Start_pressure_volt_reading = analogRead(PRESSURE_PIN);
+  float startPsi = (0.0374 * Start_pressure_volt_reading) - 3.3308;
+  float startDepth = startPsi * 0.703;
+  sendLoRaMessage(COMPANY_NAME + " Depth: " + String(startDepth, 2) + "m");
 
   if (digitalRead(SWITCH_BOTTOM_PIN) == HIGH) {
     //sendLoRaMessage("Switch setup with HIGH");
@@ -420,7 +423,7 @@ void sendIncrementalData() {
     String message = COMPANY_NAME + "\n";
     message += "Index: " + String(currentIndex) + "\n";
     message += "Time: " + String(timeList.get(currentIndex)) + " ms\n";
-    message += "Pressure: " + String(psiList.get(currentIndex), 2) + " PSI\n";
+    //message += "Pressure: " + String(psiList.get(currentIndex), 2) + " PSI\n";
     message += "Depth: " + String(depthList.get(currentIndex), 2) + " m\n";
     sendLoRaMessage(message);
     currentIndex++;
