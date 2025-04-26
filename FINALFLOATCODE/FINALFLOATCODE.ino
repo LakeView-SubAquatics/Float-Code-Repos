@@ -27,7 +27,7 @@ List<float> depthList;
 List<unsigned long> timeList;
 
 const int MAX_LIST_SIZE = 2000;
-const String COMPANY_NAME = "LakeView SubAquatics-#";
+const String COMPANY_NAME = "Team #3";
 float psi_half_sec = 0.0;
 float psi_full_sec = 0.0;
 float psi_change = 0.0;
