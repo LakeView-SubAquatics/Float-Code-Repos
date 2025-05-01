@@ -35,6 +35,7 @@ bool has_maintained = false;
 int maintain_updates = 0;
 float psi_surface_start = 0;
 const int MAX_MAINTAINS = 10;
+// Modifiy these data sets  for what depth to maintain
 const float MIN_MAINTAIN_DEPTH = 2.4;
 const float MAX_MAINTAIN_DEPTH = 2.6;
 const float MIN_TOLERANCE = 2.0;
@@ -124,7 +125,7 @@ void setup() {
   float Start_pressure_volt_reading = analogRead(PRESSURE_PIN);
   float startPsi = (0.0374 * Start_pressure_volt_reading) - 3.3308;
   float startDepth = startPsi * 0.703;
-  sendLoRaMessage(COMPANY_NAME + " Depth: " + String(startDepth, 2) + "m");
+  sendLoRaMessage(COMPANY_NAME + " Depth: " + String(startDepth, 2) + "m"); // Put this stuff into the recievemnt of initialize
 
   if (digitalRead(SWITCH_BOTTOM_PIN) == HIGH) {
     //sendLoRaMessage("Switch setup with HIGH");
@@ -351,8 +352,8 @@ void maintainDepth(int total_maintain_updates, float curr_depth) {
   // Count how many depth values fall within the 2.0m to 3.0m range.
   maintain_updates = 0;
   for (int i = 0; i < depthList.getSize(); i++) {
-    float d = depthList.get(i);
-    if (d >= MIN_TOLERANCE && d <= MAX_TOLERANCE) {
+    float depth = depthList.get(i);
+    if (depth >= MIN_TOLERANCE && depth <= MAX_TOLERANCE) {
       maintain_updates++;
     }
   }
