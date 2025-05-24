@@ -1,7 +1,7 @@
 /* 
   Author(s): Tyerone Chen, Danny Henningfield, Adam Palma
   Init Create: 6/30/2024
-  Last update: 5/22/2025
+  Last update: 5/24/2025
 */
 
 #include <SPI.h>
@@ -30,6 +30,7 @@ const int MAX_LIST_SIZE = 2000;
 const String COMPANY_NAME = "Team #3";
 float psi_half_sec = 0.0;
 float psi_full_sec = 0.0;
+bool psi_half_check = false;
 float psi_change = 0.0;
 bool has_maintained = false;
 int maintain_updates = 0;
@@ -52,17 +53,14 @@ const int SWITCH_TOP_PIN = 12;
 const int SWITCH_BOTTOM_PIN = A3;
 
 unsigned long radio_task_millis = 0;
-unsigned long psi_task_half_millis = 0;
-unsigned long psi_task_full_millis = 0;
-unsigned long psi_change_check_millis = 0;
+unsigned long cycle = 0;
 unsigned long list_updater_millis = 0;
 unsigned long maintain_timer_millis = 0;
 unsigned long last_send_time = 0;
 
 const long RADIO_TASK_INTERVAL = 1500;
-const long PSI_TASK_HALF_INTERVAL = 1001;
-const long PSI_TASK_FULL_INTERVAL = 1250;
-const long PSI_CHANGE_CHECK_INTERVAL = 500;
+const unsigned long PERIOD = 1000;
+const unsigned long PSI_HALF_OFFSET = 250;
 const long LIST_UPDATER_INTERVAL = 5000;
 const unsigned long SEND_INTERVAL = 1500; // 1 second between data points
 
@@ -97,8 +95,11 @@ enum Interval_State {
 
 Interval_State interval_state = INTERVAL_MOVING;
 unsigned long interval_timer = 0;
-const unsigned long INTERVAL_GO_INTERVAL = 500; // Every _ secs change 
-const unsigned long INTERVAL_STOP_INTERVAL = 5000;
+const unsigned long INTERVAL_GO_INTERVAL = 1000; // Every _ milisecs it'll stay on 
+const unsigned long INTERVAL_STOP_INTERVAL = 500; // Every _ milisecs it'll stay off
+
+// Psi Rate of Change
+const float psi_roc = 5.0;
 
 #pragma endregion
 
@@ -145,6 +146,7 @@ void setup() {
     //sendLoRaMessage("Switch setup with LOW");
     motor_direction = STALLED;
   }
+  cycle = millis();
 }
 #pragma endregion
 
@@ -214,19 +216,16 @@ void loop() {
   }
 
   if (send_float) {
-    if (current_millis - psi_task_half_millis >= PSI_TASK_HALF_INTERVAL) {
-      psi_task_half_millis = current_millis;
+    if (current_millis - cycle >= PERIOD) {
+      cycle += PERIOD;
+      psi_full_sec = psi; 
+      psi_half_check = false;
+    }
+
+    if (!psi_half_check && current_millis - cycle >= PSI_HALF_OFFSET) {
       psi_half_sec = psi;
-    }
-
-    if (current_millis - psi_task_full_millis >= PSI_TASK_FULL_INTERVAL) {
-      psi_task_full_millis = current_millis;
-      psi_full_sec = psi;
-    }
-
-    if (current_millis - psi_change_check_millis >= PSI_CHANGE_CHECK_INTERVAL) {
-      psi_change_check_millis = current_millis;
       psi_change = psi_half_sec - psi_full_sec;
+      psi_half_check = true;
     }
 
     bool switch_top_state = digitalRead(SWITCH_TOP_PIN) == LOW;
@@ -329,7 +328,11 @@ void checkMotorState(Float_State float_state, float curr_depth, float psi_change
         //sendLoRaMessage("Bottom switch triggered in MOVING_DOWN");
         float_curr_state = MAINTAIN;
         motor_direction = STALLED;
-      } else {
+      } 
+      else if (psi_change >= psi_roc) { // CHeck whenever the psi change is greater or equal to a roc that itll stop the motor
+        motor_direction = STALLED;
+      }
+      else {
         float_curr_state = MOVING_DOWN;
         motor_direction = CLOCKWISE;
       }
