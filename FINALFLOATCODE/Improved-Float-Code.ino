@@ -1,7 +1,7 @@
 /* 
   Author(s): Tyerone Chen, Danny Henningfield, Adam Palma
   Init Create: 6/30/2024
-  Last update: 5/24/2025
+  Last update: 5/27/2025
 */
 
 #include <SPI.h>
@@ -60,7 +60,7 @@ unsigned long last_send_time = 0;
 
 const long RADIO_TASK_INTERVAL = 1500;
 const unsigned long PERIOD = 1000;
-const unsigned long PSI_HALF_OFFSET = 250;
+const unsigned long PSI_HALF_OFFSET = 5000;
 const long LIST_UPDATER_INTERVAL = 5000;
 const unsigned long SEND_INTERVAL = 1500; // 1 second between data points
 
@@ -99,7 +99,10 @@ const unsigned long INTERVAL_GO_INTERVAL = 1000; // Every _ milisecs it'll stay 
 const unsigned long INTERVAL_STOP_INTERVAL = 500; // Every _ milisecs it'll stay off
 
 // Psi Rate of Change
-const float psi_roc = 5.0;
+const float psi_roc = 0.1;
+unsigned long led_on_time = 0;
+const unsigned long BLINK_DURATION = 500;
+
 
 #pragma endregion
 
@@ -216,16 +219,24 @@ void loop() {
   }
 
   if (send_float) {
-    if (current_millis - cycle >= PERIOD) {
-      cycle += PERIOD;
+    if (!psi_half_check && (current_millis - cycle >= PERIOD)) {
+      //digitalWrite(LED_BUILTIN, LOW); // blink every 500ms
       psi_full_sec = psi; 
-      psi_half_check = false;
+      psi_half_check = true;
+
     }
 
-    if (!psi_half_check && current_millis - cycle >= PSI_HALF_OFFSET) {
+    if (psi_half_check && (current_millis - cycle >= PSI_HALF_OFFSET)) {
+      digitalWrite(LED_BUILTIN, HIGH); // blink every 500ms
       psi_half_sec = psi;
-      psi_change = psi_half_sec - psi_full_sec;
-      psi_half_check = true;
+      psi_change = psi_full_sec - psi_half_sec;
+      psi_half_check = false;
+      cycle += PERIOD;
+      led_on_time = current_millis;
+    }
+
+    if (digitalRead(LED_BUILTIN) == HIGH && current_millis - led_on_time >= BLINK_DURATION) {
+      digitalWrite(LED_BUILTIN, LOW);
     }
 
     bool switch_top_state = digitalRead(SWITCH_TOP_PIN) == LOW;
@@ -261,7 +272,7 @@ void loop() {
       if (millis() - last_send_time >= SEND_INTERVAL) {
         last_send_time = millis();
         if (depth < 0.2 && psi_change < .1) {
-        digitalWrite(LED_BUILTIN, LOW); // blink every 500ms
+          //digitalWrite(LED_BUILTIN, LOW); // blink every 500ms
           sendIncrementalData();
         }
       }
@@ -293,6 +304,11 @@ void checkMotorState(Float_State float_state, float curr_depth, float psi_change
   switch_top_state = digitalRead(SWITCH_TOP_PIN) == LOW;
   switch_bottom_state = digitalRead(SWITCH_BOTTOM_PIN) == LOW;
 
+  if (abs(psi_change) >= psi_roc) {
+    motor_direction = STALLED;
+    return; // skip further state handling this cycle
+  }
+
   switch (float_state) {
     case SURFACED:
       //sendLoRaMessage("ENTERED SURFACE");
@@ -317,7 +333,8 @@ void checkMotorState(Float_State float_state, float curr_depth, float psi_change
       if (switch_top_state) {
         float_curr_state = SURFACED;
         motor_direction = STALLED;
-      } else {
+      } 
+      else {
         float_curr_state = MOVING_UP;
         motor_direction = COUNTERCLOCKWISE;
       }
@@ -329,9 +346,6 @@ void checkMotorState(Float_State float_state, float curr_depth, float psi_change
         float_curr_state = MAINTAIN;
         motor_direction = STALLED;
       } 
-      else if (psi_change >= psi_roc) { // CHeck whenever the psi change is greater or equal to a roc that itll stop the motor
-        motor_direction = STALLED;
-      }
       else {
         float_curr_state = MOVING_DOWN;
         motor_direction = CLOCKWISE;
@@ -389,6 +403,11 @@ void maintainDepth(int total_maintain_updates, float curr_depth) {
   bool switch_top_state = digitalRead(SWITCH_TOP_PIN) == LOW;
   bool switch_bottom_state = digitalRead(SWITCH_BOTTOM_PIN) == LOW;
 
+  if (abs(psi_change) >= psi_roc) {
+    motor_direction = STALLED;
+    return; // skip further state handling this cycle
+  }
+
   // Count how many depth values fall within the 2.0m to 3.0m range.
   maintain_updates = 0;
   for (int i = 0; i < depthList.getSize(); i++) {
@@ -408,7 +427,8 @@ void maintainDepth(int total_maintain_updates, float curr_depth) {
     } else if (curr_depth > MAX_MAINTAIN_DEPTH) {
       if (!switch_bottom_state) {
         motor_direction = CLOCKWISE;
-      } else {
+      } 
+      else {
         motor_direction = STALLED;
       }
     } else {
