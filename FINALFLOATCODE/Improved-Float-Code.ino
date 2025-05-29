@@ -1,7 +1,7 @@
 /* 
   Author(s): Tyerone Chen, Danny Henningfield, Adam Palma
   Init Create: 6/30/2024
-  Last update: 5/27/2025
+  Last update: 5/29/2025
 */
 
 #include <SPI.h>
@@ -37,8 +37,8 @@ int maintain_updates = 0;
 float psi_surface_start = 0;
 const int MAX_MAINTAINS = 10;
 // Modifiy these data sets  for what depth to maintain
-const float MIN_MAINTAIN_DEPTH = 2.4;
-const float MAX_MAINTAIN_DEPTH = 2.6;
+const float MIN_MAINTAIN_DEPTH = 2.45;
+const float MAX_MAINTAIN_DEPTH = 2.55;
 const float MIN_TOLERANCE = 2.0;
 const float MAX_TOLERANCE = 3.0; 
 
@@ -51,6 +51,9 @@ const int DUTY_CYCLE = 255;
 const int PRESSURE_PIN = A1;
 const int SWITCH_TOP_PIN = 12;
 const int SWITCH_BOTTOM_PIN = A3;
+
+bool first_send = false;
+const unsigned long DATA_SEND_DELAY = 3000; // 3 sec data send delay
 
 unsigned long radio_task_millis = 0;
 unsigned long cycle = 0;
@@ -166,7 +169,7 @@ void loop() {
   // Interval thing
   
 
-  if(has_maintained == true) {
+  if(has_maintained) {
     if (digitalRead(SWITCH_BOTTOM_PIN) == HIGH) {
       //sendLoRaMessage("Switch setup with HIGH");
       motor_direction = CLOCKWISE;
@@ -268,11 +271,15 @@ void loop() {
     }
     
 
-    if (has_maintained == true) {
+    if (has_maintained) {
       if (millis() - last_send_time >= SEND_INTERVAL) {
         last_send_time = millis();
         if (depth < 0.2 && psi_change < .1) {
           //digitalWrite(LED_BUILTIN, LOW); // blink every 500ms
+          if (!first_send) {
+            delay(DATA_SEND_DELAY);
+            first_send = true;
+          }
           sendIncrementalData();
         }
       }
@@ -304,7 +311,7 @@ void checkMotorState(Float_State float_state, float curr_depth, float psi_change
   switch_top_state = digitalRead(SWITCH_TOP_PIN) == LOW;
   switch_bottom_state = digitalRead(SWITCH_BOTTOM_PIN) == LOW;
 
-  if (abs(psi_change) >= psi_roc) {
+  if (abs(psi_change) >= psi_roc && curr_depth < MIN_MAINTAIN_DEPTH) {
     motor_direction = STALLED;
     return; // skip further state handling this cycle
   }
@@ -403,7 +410,7 @@ void maintainDepth(int total_maintain_updates, float curr_depth) {
   bool switch_top_state = digitalRead(SWITCH_TOP_PIN) == LOW;
   bool switch_bottom_state = digitalRead(SWITCH_BOTTOM_PIN) == LOW;
 
-  if (abs(psi_change) >= psi_roc) {
+  if (abs(psi_change) >= psi_roc && curr_depth < MIN_MAINTAIN_DEPTH) {
     motor_direction = STALLED;
     return; // skip further state handling this cycle
   }
@@ -462,6 +469,7 @@ void sendIncrementalData() {
       timeList.clear();
       currentIndex = 0;
       has_maintained = false;
+      first_send = false;
       maintain_updates = 0;
       float_curr_state = IDLE;  // Transition to IDLE (or a final state)
       send_float = false;       // Disable further data sending/maintain activity
