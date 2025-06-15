@@ -26,7 +26,7 @@ List<float> psiList;
 List<float> depthList;
 List<unsigned long> timeList;
 
-const int MAX_LIST_SIZE = 2000;
+const int MAX_LIST_SIZE = 750;
 const String COMPANY_NAME = "Team #3";
 float psi_half_sec = 0.0;
 float psi_full_sec = 0.0;
@@ -162,7 +162,7 @@ void loop() {
   unsigned long current_millis = millis();
 
   float pressure_volt_reading = analogRead(PRESSURE_PIN);
-  float psi = ((0.12 * pressure_volt_reading) - 12.22) - psi_surface_start;
+  float psi = ((0.0372 * pressure_volt_reading) - 3.88) - psi_surface_start;
   float pascal_pi = (psi - 14.7) * 6894.76;
   float depth = psi * 0.703;
   depth = depth < 0 ? 0 : depth;
@@ -173,7 +173,7 @@ void loop() {
   if(has_maintained) {
     if (digitalRead(SWITCH_BOTTOM_PIN) == HIGH) {
       //sendLoRaMessage("Switch setup with HIGH");
-      motor_direction = CLOCKWISE;
+      motor_direction = CLOCKWISE; //push water out, go to surface 
     } else {
       motor_direction = STALLED;
     }
@@ -252,7 +252,7 @@ void loop() {
     if (has_maintained) {
       if (millis() - last_send_time >= SEND_INTERVAL) {
         last_send_time = millis();
-        if (depth < 0.2 && psi_change < .1) {
+       if (depth < 0.2 && psi_change < .1) {     //may need to look at
           //digitalWrite(LED_BUILTIN, LOW); // blink every 500ms
           if (!first_send) {
             delay(DATA_SEND_DELAY);
