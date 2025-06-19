@@ -1,7 +1,7 @@
 /* 
   Author(s): Tyerone Chen, Danny Henningfield, Adam Palma
   Init Create: 6/30/2024
-  Last update: 5/31/2025
+  Last update: 6/19/2025
 */
 
 #include <SPI.h>
@@ -37,8 +37,9 @@ int maintain_updates = 0;
 float psi_surface_start = 0;
 const int MAX_MAINTAINS = 1;
 // Modifiy these data sets  for what depth to maintain
-const float MIN_MAINTAIN_DEPTH = 0.2;
-const float MAX_MAINTAIN_DEPTH = 0.4;
+// Should grab data from around 2.5m
+const float MIN_MAINTAIN_DEPTH = 2.4;
+const float MAX_MAINTAIN_DEPTH = 2.5;
 const float MIN_TOLERANCE = 0.5;
 const float MAX_TOLERANCE = 1; 
 
