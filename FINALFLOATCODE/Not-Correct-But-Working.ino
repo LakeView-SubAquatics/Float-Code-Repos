@@ -35,13 +35,13 @@ float psi_change = 0.0;
 bool has_maintained = false;
 int maintain_updates = 0;
 float psi_surface_start = 0;
-const int MAX_MAINTAINS = 1;
+const int MAX_MAINTAINS = 1; // Change later
 // Modifiy these data sets  for what depth to maintain
 // Should grab data from around 2.5m
 const float MIN_MAINTAIN_DEPTH = 2.4;
 const float MAX_MAINTAIN_DEPTH = 2.5;
-const float MIN_TOLERANCE = 0.5;
-const float MAX_TOLERANCE = 1; 
+const float MIN_TOLERANCE = 2;
+const float MAX_TOLERANCE = 3; 
 
 const int OUT_A = 5;
 const int DIAG_PORT_A = 6;
