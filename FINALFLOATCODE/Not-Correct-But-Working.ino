@@ -104,7 +104,7 @@ enum Interval_State {
 Interval_State interval_state = INTERVAL_MOVING;
 unsigned long interval_timer = 0;
 const unsigned long INTERVAL_GO_INTERVAL = 750; // Every _ milisecs it'll stay on 
-const unsigned long INTERVAL_STOP_INTERVAL = 2500; // Every _ milisecs it'll stay off
+const unsigned long INTERVAL_STOP_INTERVAL = 100; // Every _ milisecs it'll stay off
 
 // Psi Rate of Change
 const float PSI_ROC = 0.01;
